@@ -4,7 +4,8 @@
 #include <QModelIndex>
 #include <QThread>
 
-#include "exif.h"
+#include "exif/file.h"
+#include "exif/utils.h"
 #include "model.h"
 
 Qt::ItemFlags Checker::flags(const QModelIndex& index) const

@@ -12,10 +12,6 @@ int main(int argc, char *argv[])
     a.setApplicationName("geoviever");
     a.setApplicationVersion("0.1");
 
-#ifdef Q_OS_WINDOWS
-    QTextCodec::setCodecForLocale(QTextCodec::codecForName("CP 1251"));
-#endif
-
     MainWindow w;
     w.show();
 
