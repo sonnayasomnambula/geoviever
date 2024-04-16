@@ -1,12 +1,59 @@
+#include <QBuffer>
 #include <QDebug>
 #include <QFileSystemModel>
 #include <QGeoCoordinate>
 #include <QModelIndex>
+#include <QPainter>
+#include <QPixmap>
 #include <QThread>
+
+#include <cmath>
 
 #include "exif/file.h"
 #include "exif/utils.h"
 #include "model.h"
+
+namespace Pics
+{
+
+QPixmap thumbnail(const QPixmap& pixmap, int size)
+{
+    QPixmap pic = (pixmap.width() > pixmap.height()) ? pixmap.scaledToHeight(size) : pixmap.scaledToWidth(size);
+    return pic.copy((pic.width() - size) / 2, (pic.height() - size) / 2, size, size);
+}
+
+QString toBase64(const QPixmap& pixmap, const char* format)
+{
+    QByteArray raw;
+    QBuffer buff(&raw);
+    buff.open(QIODevice::WriteOnly);
+    pixmap.save(&buff, format);
+
+    QString base64("data:image/jpg;base64,");
+    base64.append(QString::fromLatin1(raw.toBase64().data()));
+    return base64;
+}
+
+QPixmap fromBase64(const QString& base64)
+{
+    static const int dataIndex = QString("data:image/jpg;base64,").size();
+    QByteArray raw = QByteArray::fromBase64(base64.toLatin1().mid(dataIndex));
+    QPixmap pix;
+    pix.loadFromData(raw);
+    return pix;
+}
+
+} // namespace Pics
+
+bool operator ==(const Photo& L, const Photo& R)
+{
+    return L.path == R.path && L.pixmap == R.pixmap && L.position == R.position;
+}
+
+bool operator !=(const Photo& L, const Photo& R)
+{
+    return !(L == R);
+}
 
 Qt::ItemFlags Checker::flags(const QModelIndex& index) const
 {
@@ -64,44 +111,74 @@ void Checker::updateChildrenCheckState(const QModelIndex &index)
     }
 }
 
-void ExifReader::parse(const QStringList& files)
+void ExifReader::parse(const QString& file)
 {
-    qDebug() << QThread::currentThreadId() << Q_FUNC_INFO;
-    for (const QString& file: files)
+    Exif::File exif;
+    if (!exif.load(QDir::toNativeSeparators(file), false))
     {
-        Exif::File exif;
-        if (!exif.load(QDir::toNativeSeparators(file), false))
-        {
-            qWarning() << "Unable to load" << QDir::toNativeSeparators(file);
-            continue;
-        }
-
-        auto lat = exif.uRationalVector(EXIF_IFD_GPS, Exif::Tag::GPS::LATITUDE);
-        auto lon = exif.uRationalVector(EXIF_IFD_GPS, Exif::Tag::GPS::LONGITUDE);
-        auto latRef = exif.ascii(EXIF_IFD_GPS, Exif::Tag::GPS::LATITUDE_REF);
-        auto lonRef = exif.ascii(EXIF_IFD_GPS, Exif::Tag::GPS::LONGITUDE_REF);
-
-        if (!lat.isEmpty() && !lon.isEmpty())
-        {
-            QGeoCoordinate coords = Exif::Utils::fromLatLon(lat, latRef, lon, lonRef);
-            qDebug() << file << coords.toString();
-            emit ready(file, { coords.latitude(), coords.longitude() });
-        }
+        // no EXIF here
+        qWarning() << "Unable to load EXIF from" << QDir::toNativeSeparators(file);
+        return;
     }
+
+    Photo photo;
+    photo.path = file;
+
+    auto lat = exif.uRationalVector(EXIF_IFD_GPS, Exif::Tag::GPS::LATITUDE);
+    auto lon = exif.uRationalVector(EXIF_IFD_GPS, Exif::Tag::GPS::LONGITUDE);
+    auto latRef = exif.ascii(EXIF_IFD_GPS, Exif::Tag::GPS::LATITUDE_REF);
+    auto lonRef = exif.ascii(EXIF_IFD_GPS, Exif::Tag::GPS::LONGITUDE_REF);
+
+    if (!lat.isEmpty() && !lon.isEmpty())
+    {
+        QGeoCoordinate coords = Exif::Utils::fromLatLon(lat, latRef, lon, lonRef);
+        photo.position = { coords.latitude(), coords.longitude() };
+    }
+
+    QPixmap pix;
+    if (pix.load(photo.path))
+        photo.pixmap = Pics::toBase64(Pics::thumbnail(pix, 32), "JPEG"); // TODO magic constant
+    // else
+    //     photo.pixmap = ":/img/not_available.png"; // TODO
+
+    emit ready(photo);
 }
 
-ExifStorage::ExifStorage(QObject* parent) : QObject(parent)
+ExifStorage::ExifStorage()
 {
     auto reader = new ExifReader;
     reader->moveToThread(&mThread);
     connect(&mThread, &QThread::finished, reader, &QObject::deleteLater);
     connect(this, &ExifStorage::parse, reader, &ExifReader::parse);
-    connect(reader, &ExifReader::ready, this, &ExifStorage::ready);
-    connect(reader, &ExifReader::ready, this, [this](const QString& file, const QPointF& coords){
-        mData[file] = coords;
-        emit ready(file);
-    });
+    connect(reader, &ExifReader::ready, this, &ExifStorage::add);
     mThread.start();
+}
+
+void ExifStorage::add(const Photo &photo)
+{
+    {
+        QMutexLocker lock(&mMutex);
+        mData[photo.path] = photo;
+    }
+
+    emit ready(photo);
+}
+
+Photo ExifStorage::dummy(const QString& path)
+{
+    return { path, {}, {} };
+}
+
+ExifStorage ExifStorage::init()
+{
+    qRegisterMetaType<Photo>();
+    return {};
+}
+
+ExifStorage* ExifStorage::instance()
+{
+    static ExifStorage storage = init();
+    return &storage;
 }
 
 ExifStorage::~ExifStorage()
@@ -110,36 +187,50 @@ ExifStorage::~ExifStorage()
     mThread.wait();
 }
 
-Model::Model(QObject *parent)
+bool ExifStorage::fillData(const QString& path, Photo* photo)
+{
+    auto storage = instance();
+    QMutexLocker lock(&storage->mMutex);
+    auto i = storage->mData.constFind(path);
+    if (i != storage->mData.constEnd())
+    {
+        *photo = *i;
+        return true;
+    }
+
+    if (!storage->mInProgress.contains(path))
+    {
+        storage->mInProgress.append(path);
+        emit storage->parse(path);
+    }
+
+    return false;
+}
+
+QPointF ExifStorage::coords(const QString& path)
+{
+    auto storage = instance();
+    QMutexLocker lock(&storage->mMutex);
+    auto i = storage->mData.constFind(path);
+    if (i != storage->mData.constEnd())
+        return i->position;
+
+    if (!storage->mInProgress.contains(path))
+    {
+        storage->mInProgress.append(path);
+        emit storage->parse(path);
+    }
+
+    return {};
+}
+
+FileTreeModel::FileTreeModel(QObject *parent)
     : Super(parent)
 {
-    qDebug() << QThread::currentThreadId() << Q_FUNC_INFO;
+    qDebug() << "main thread ID is" << QThread::currentThreadId();
 
-    connect(this, &Model::dataChanged, this, [this](const QModelIndex& topLeft, const QModelIndex& bottomRight, const QVector<int>& roles){
-        if (roles.contains(Qt::CheckStateRole)) {
-            QStringList files;
-            for (int row = topLeft.row(); row <= bottomRight.row(); ++row) {
-                QModelIndex i = index(row, 0, topLeft.parent());
-                if (bool checked = i.data(Qt::CheckStateRole).toBool()) {
-                    Q_UNUSED(checked);
-                    QString path = filePath(i);
-                    if (isDir(i)) {
-                        files.append(entryList(path));
-                    } else {
-                        if (!mExifStorage.data().contains(path)) {
-                            files.append(path);
-                        }
-                    }
-                }
-            }
-            if (!files.isEmpty()) {
-                mExifStorage.parse(files);
-            }
-        }
-    });
-
-    connect(&mExifStorage, &ExifStorage::ready, this, [this](const QString& file){
-        QModelIndex i = index(file);
+    connect(ExifStorage::instance(), &ExifStorage::ready, this, [this](const Photo& photo){
+        QModelIndex i = index(photo.path);
         if (i.isValid()) {
             i = i.siblingAtColumn(COLUMN_COORDS);
             emit dataChanged(i, i, { Qt::DisplayRole });
@@ -147,35 +238,35 @@ Model::Model(QObject *parent)
     });
 }
 
-int Model::columnCount(const QModelIndex& /*parent*/) const
+int FileTreeModel::columnCount(const QModelIndex& /*parent*/) const
 {
     return COLUMNS_COUNT;
 }
 
-Qt::ItemFlags Model::flags(const QModelIndex& index) const
+Qt::ItemFlags FileTreeModel::flags(const QModelIndex& index) const
 {
     return Super::flags(index) | Checker::flags(index);
 }
 
-QVariant Model::data(const QModelIndex& index, int role) const
+QVariant FileTreeModel::data(const QModelIndex& index, int role) const
 {
     if (role == Qt::CheckStateRole)
         return Checker::checkState(index);
 
     if (index.column() == COLUMN_COORDS && (role == Qt::DisplayRole || role == Qt::EditRole ))
-        return mExifStorage.data().value(filePath(index));
+        return isDir(index) ? QVariant() : QVariant(ExifStorage::coords(filePath(index)));
 
     return Super::data(index, role);
 }
 
-bool Model::setData(const QModelIndex& index, const QVariant& value, int role)
+bool FileTreeModel::setData(const QModelIndex& index, const QVariant& value, int role)
 {
     return role == Qt::CheckStateRole ?
-               Checker::setCheckState(index, value) :
+               Checker::setCheckState(index, value) && FileTreeModel::setCheckState(index, value) :
                Super::setData(index, value, role);
 }
 
-QVariant Model::headerData(int section, Qt::Orientation orientation, int role) const
+QVariant FileTreeModel::headerData(int section, Qt::Orientation orientation, int role) const
 {
     if (section == COLUMN_COORDS && orientation == Qt::Horizontal && role == Qt::DisplayRole)
         return tr("Coords");
@@ -183,29 +274,348 @@ QVariant Model::headerData(int section, Qt::Orientation orientation, int role) c
     return Super::headerData(section, orientation, role);
 }
 
-QStringList Model::entryList(const QString& dir) const
+bool FileTreeModel::setCheckState(const QModelIndex& index, const QVariant& value)
 {
+    if (!index.isValid())
+        return false;
+
+    Qt::CheckState state = static_cast<Qt::CheckState>(value.toInt());
+    for (const QString& entry: entryList(filePath(index)))
+        /*emit*/ state == Qt::Checked ? inserted(entry) : removed(entry);
+    return true;
+}
+
+QStringList FileTreeModel::entryList(const QString& dir) const
+{
+    if (QFileInfo(dir).isFile())
+        return { dir };
+
     QDir directory(dir);
+
     auto files = directory.entryList(nameFilters(), QDir::Files, QDir::Name);
     auto subdirs = directory.entryList({}, QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
 
     QStringList all;
 
-    for (const auto& file: files) {
-        QString path = directory.absoluteFilePath(file);
-        if (!mExifStorage.data().contains(path)) {
-            all.append(path);
-        }
-    }
+    for (const auto& file: files)
+        all.append(directory.absoluteFilePath(file));
 
-    for (const auto& subdir: subdirs) {
-        QString path = directory.absoluteFilePath(subdir);
-        for (const auto& file: entryList(path)) {
-            if (!mExifStorage.data().contains(file)) {
-                all.append(file);
+    for (const auto& subdir: subdirs)
+        all.append(entryList(directory.absoluteFilePath(subdir)));
+
+    return all;
+}
+
+// QML-used objects must be destoyed after QML engine so don't pass parent here
+MapPhotoListModel::MapPhotoListModel() : mBuckets(this), mBubbles(32, Qt::darkBlue)
+{
+    connect(this, &MapPhotoListModel::zoomChanged, this, &MapPhotoListModel::updateBuckets);
+}
+
+int MapPhotoListModel::rowCount(const QModelIndex& index) const
+{
+    return index.isValid() ? 0 : mBuckets.size();
+}
+
+QVariant MapPhotoListModel::data(const QModelIndex& index, int role) const
+{
+    bool ok = index.isValid() && index.row() < rowCount();
+    if (!ok)
+        return {};
+
+    int row = index.row();
+
+    if (role == Role::Index)
+        return row;
+
+    const Bucket& bucket = mBuckets.at(row);
+
+    if (role == Role::Latitude)
+        return bucket.position.x();
+
+    if (role == Role::Longitude)
+        return bucket.position.y();
+
+    if (role == Role::Pixmap)
+        return bucket.photos.size() == 1 ? bucket.photos.first().pixmap : mBubbles.bubble(bucket.photos.size());
+
+    if (role == Role::Files)
+        return bucket.files();
+
+    return {};
+}
+
+QHash<int, QByteArray> MapPhotoListModel::roleNames() const
+{
+    QHash<int, QByteArray> roles;
+    roles[Role::Index] = "_index_";
+    roles[Role::Latitude] = "_latitude_";
+    roles[Role::Longitude] = "_longitude_";
+    roles[Role::Pixmap] = "_pixmap_";
+    roles[Role::Files] = "_files_";
+    return roles;
+}
+
+void MapPhotoListModel::insert(const QString& path)
+{
+    mKeys.append(path);
+
+    Photo photo;
+    if (ExifStorage::fillData(path, &photo))
+        mBuckets.insert(photo, mZoom);
+}
+
+void MapPhotoListModel::remove(const QString& path)
+{
+    int i = mKeys.indexOf(path);
+    if (i != -1)
+    {
+        mKeys.removeAt(i); // TODO remove data?
+        mBuckets.remove(path);
+    }
+}
+
+void MapPhotoListModel::update(const Photo& photo)
+{
+    if (mKeys.contains(photo.path))
+        mBuckets.insert(photo, mZoom);
+}
+
+void MapPhotoListModel::setZoom(qreal zoom)
+{
+    if (!qFuzzyCompare(zoom, mZoom)) {
+        mZoom = zoom;
+        emit zoomChanged();
+    }
+}
+
+void MapPhotoListModel::setCenter(const QGeoCoordinate& center)
+{
+    if (center != mCenter)
+    {
+        mCenter = center;
+        emit centerChanged();
+    }
+}
+
+QModelIndex MapPhotoListModel::index(const QString& path)
+{
+    for (int row = 0; row < mBuckets.size(); ++row)
+    {
+        for (const Photo& photo: mBuckets.at(row).photos)
+        {
+            if (photo.path == path)
+            {
+                return index(row, 0);
             }
         }
     }
 
-    return all;
+    return {};
+}
+
+void MapPhotoListModel::setCurrentRow(int row)
+{
+    if (row != mCurrentRow)
+    {
+        mCurrentRow = row;
+        emit currentRowChanged(mCurrentRow);
+    }
+}
+
+void MapPhotoListModel::setHoveredRow(int row)
+{
+    if (row != mHoveredRow)
+        mHoveredRow = row;
+}
+
+void MapPhotoListModel::updateBuckets()
+{
+    BucketList buckets;
+    for (const Bucket& b: mBuckets)
+        for (const Photo& p: b.photos)
+            buckets.insert(p, mZoom);
+
+    if (buckets != mBuckets)
+    {
+        mBuckets.updateFrom(buckets);
+        setCurrentRow(-1);
+        setHoveredRow(-1);
+    }
+}
+
+MapPhotoListModel::Bucket::Bucket(const Photo& photo)
+{
+    insert(photo);
+}
+
+bool MapPhotoListModel::Bucket::insert(const Photo& photo)
+{
+    if (!isValid(photo))
+        return false;
+
+    for (const Photo& item: photos)
+        if (item.path == photo.path)
+            return false;
+
+    position *= photos.size();
+    photos.append(photo);
+    position += photo.position;
+    position /= photos.size();
+
+    return true;
+}
+
+bool MapPhotoListModel::Bucket::remove(const QString& path)
+{
+    for (int i = 0; i < photos.size(); ++i)
+    {
+        if (photos[i].path == path)
+        {
+            QPointF pos = position * photos.size();
+            pos -= photos[i].position;
+            photos.removeAt(i);
+            pos /= photos.size();
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool MapPhotoListModel::Bucket::isValid(const Photo& photo)
+{
+    return !photo.path.isEmpty() && !photo.pixmap.isEmpty() && !photo.position.isNull();
+}
+
+QStringList MapPhotoListModel::Bucket::files() const
+{
+    QStringList list;
+    list.reserve(photos.size());
+    for (const Photo& photo: photos)
+    list.append(photo.path);
+    return list;
+}
+
+bool MapPhotoListModel::Bucket::operator ==(const Bucket& other)
+{
+    return photos == other.photos;
+}
+
+bool MapPhotoListModel::Bucket::operator !=(const Bucket& other)
+{
+    return photos != other.photos;
+}
+
+Bubbles::Bubbles(int size, const QColor& color) : mSize(size), mColor(color)
+{
+
+}
+
+QString Bubbles::bubble(int value)
+{
+    auto i = mData.constFind(value);
+    if (i != mData.constEnd())
+        return *i;
+
+    QString generated = Pics::toBase64(generate(value, mSize, mColor), "PNG");
+    mData.insert(value, generated);
+    return generated;
+}
+
+QPixmap Bubbles::generate(int value, int size, const QColor& color)
+{
+    QPixmap pix(size, size);
+    pix.fill(Qt::transparent);
+    QRect rect = pix.rect().adjusted(1, 1, -1, -1);
+    QPainter painter(&pix);
+    painter.setPen({ color, 2 });
+    painter.setBrush(Qt::white);
+    painter.drawEllipse(rect);
+    QFont font("Tahoma");
+    font.setPixelSize(value >= 100 ? size * 4 / 10 : size / 2);
+    painter.setFont(font);
+    rect.adjust(-1,-1,0,0);
+    painter.drawText(rect, Qt::AlignCenter, QString::number(value));
+    return pix;
+}
+
+int MapPhotoListModel::BucketList::insert(const Photo& photo, double zoom)
+{
+    QGeoCoordinate position(photo.position.x(), photo.position.y());
+    for (int row = 0; row < size(); ++row)
+    {
+        Bucket& bucket = (*this)[row];
+        double dist = QGeoCoordinate(bucket.position.x(), bucket.position.y()).distanceTo(position);
+
+        // https://wiki.openstreetmap.org/wiki/Zoom_levels
+        static constexpr double C = 40075016.686 / 2.0;
+        double pixel_size = C * std::abs(std::cos(bucket.position.x())) / std::pow(2, zoom + 8);
+        double thumb_size = pixel_size * 32; // TODO magic constant
+        if (dist < thumb_size)
+        {
+            bucket.insert(photo);
+            if (mModel)
+            {
+                QModelIndex index = mModel->index(row, 0);
+                emit mModel->dataChanged(index, index, { Role::Latitude, Role::Longitude, Role::Pixmap });
+            }
+            return row;
+        }
+    }
+
+    if (mModel) mModel->beginInsertRows({}, size(), size());
+    append(photo);
+    if (mModel) mModel->endInsertRows();
+
+    return size();
+}
+
+bool MapPhotoListModel::BucketList::remove(const QString& path)
+{
+    for (int row = 0; row < size(); ++row)
+    {
+        Bucket& bucket = (*this)[row];
+        if (bucket.remove(path))
+        {
+            if (bucket.photos.isEmpty())
+            {
+                if (mModel) mModel->beginRemoveRows({}, row, row);
+                removeAt(row);
+                if (mModel) mModel->endRemoveRows();
+            }
+            else
+            {
+                if (mModel)
+                {
+                    QModelIndex idx = mModel->index(row);
+                    emit mModel->dataChanged(idx, idx, { Role::Latitude, Role::Longitude, Role::Pixmap });
+                }
+            }
+
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void MapPhotoListModel::BucketList::updateFrom(const BucketList &other)
+{
+    if (mModel) mModel->beginResetModel();
+
+    QList<Bucket>::clear();
+    QList<Bucket>::append(other);
+
+    if (mModel) mModel->endResetModel();
+}
+
+bool MapPhotoListModel::BucketList::operator ==(const BucketList& other) const
+{
+    return QList<Bucket>::operator ==(other);
+}
+
+bool MapPhotoListModel::BucketList::operator !=(const BucketList& other) const
+{
+    return !(*this == other);
 }

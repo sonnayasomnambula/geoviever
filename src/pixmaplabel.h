@@ -16,6 +16,8 @@ public:
 
     void setPixmap(const QPixmap& pixmap);
     void setPath(const QString& path);
+    void clear();
+
     QSize sizeHint() const override;
     void resizeEvent(QResizeEvent* e) override;
     int heightForWidth(int width) const override;

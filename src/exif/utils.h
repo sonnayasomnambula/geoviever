@@ -10,6 +10,8 @@
 
 
 class QGeoCoordinate;
+class QPixmap;
+class QString;
 
 
 namespace Exif {

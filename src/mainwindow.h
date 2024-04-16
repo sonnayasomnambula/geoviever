@@ -8,9 +8,10 @@ namespace Ui {
 class MainWindow;
 }
 
-class QFileSystemModel;
-class QSortFilterProxyModel;
 QT_END_NAMESPACE
+
+class FileTreeModel;
+class MapPhotoListModel;
 
 class MainWindow : public QMainWindow
 {
@@ -22,10 +23,14 @@ public:
 
 protected:
     void closeEvent(QCloseEvent* e) override;
+    bool eventFilter(QObject* o, QEvent* e) override;
 
 private:
     void loadSettings();
     void saveSettings();
+
+    void showTooltip(const QPoint& pos);
+    void selectPicture(const QString& path);
 
 private slots:
     void on_pickRoot_clicked();
@@ -34,7 +39,8 @@ private slots:
 
 private:
     Ui::MainWindow* ui = nullptr;
-    QFileSystemModel* mModel = nullptr;
+    FileTreeModel*    mTreeModel = nullptr;
+    MapPhotoListModel* mMapModel = nullptr;
 };
 
 #endif // MAINWINDOW_H

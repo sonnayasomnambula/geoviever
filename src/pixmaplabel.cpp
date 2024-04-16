@@ -27,6 +27,13 @@ void PixmapLabel::setPath(const QString& path)
     mPath = path;
     setPixmap(QPixmap(path));
     setCursor(path.isEmpty() ? Qt::ArrowCursor : Qt::PointingHandCursor);
+    setStatusTip(mPath);
+}
+
+void PixmapLabel::clear()
+{
+    mPath.clear();
+    QLabel::clear();
 }
 
 QSize PixmapLabel::sizeHint() const

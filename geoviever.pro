@@ -27,3 +27,6 @@ INCLUDEPATH += \
     src \
     src/3rdparty \
 
+RESOURCES += \
+    rsc/resources.qrc
+

@@ -46,9 +46,19 @@ public:
     void setValue(ExifIfd ifd, ExifTag tag, const QByteArray& ascii);
     QByteArray ascii(ExifIfd ifd, ExifTag tag) const;
 
+    QPixmap thumbnail(int width = 0, int height = 0) const;
+
     const QString& errorString() const { return mErrorString; }
 };
 
 } // namespace Exif
+
+class QImageReader;
+namespace Pics
+{
+
+QPixmap fromImageReader(QImageReader* reader, int width, int height);
+
+}
 
 #endif // EXIF_FILE_H

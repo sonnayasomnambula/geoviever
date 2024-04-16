@@ -1,4 +1,8 @@
+#include <QBuffer>
+#include <QByteArray>
 #include <QDebug>
+#include <QImageReader>
+#include <QPixmap>
 #include <QVector>
 
 #include <cstdio>
@@ -25,7 +29,7 @@ void Exif::File::log(ExifLog* /*log*/, ExifLogCode code, const char* domain, con
 Exif::File::File()
 {
     mAllocator = exif_mem_new_default();
-    if (mLog = exif_log_new_mem(mAllocator))
+    if ((mLog = exif_log_new_mem(mAllocator)))
         exif_log_set_func(mLog, &File::log, this);
 }
 
@@ -290,4 +294,46 @@ QByteArray Exif::File::ascii(ExifIfd ifd, ExifTag tag) const
     if (d.endsWith('\0'))
         d.resize(d.size() - 1);
     return d;
+}
+
+namespace Pics
+{
+
+QPixmap fromImageReader(QImageReader* reader, int width, int height)
+{
+    if (width == 0 || height == 0)
+        return QPixmap::fromImageReader(reader);
+
+    QSize size = reader->size();
+
+    double dw = 1.0 * width / size.width();
+    double dh = 1.0 * height / size.height();
+    QSize cropped_size = size * std::max(dw, dh);
+    reader->setScaledSize(cropped_size);
+    reader->setScaledClipRect(QRect((cropped_size.width() - width) / 2,
+                             (cropped_size.height() - height) / 2,
+                             width,
+                             height));
+    return QPixmap::fromImageReader(reader);
+}
+
+}
+
+QPixmap Exif::File::thumbnail(int width, int height) const
+{
+    if (mExifData && mExifData->data && mExifData->size)
+    {
+        QByteArray data = QByteArray::fromRawData(reinterpret_cast<const char*>(mExifData->data), mExifData->size); // not copied
+        QBuffer buffer(&data);
+        QImageReader reader(&buffer);
+        return Pics::fromImageReader(&reader, width, height);
+    }
+
+    if (!mFileName.isEmpty())
+    {
+        QImageReader reader(mFileName);
+        return Pics::fromImageReader(&reader, width, height);
+    }
+
+    return {};
 }
