@@ -65,7 +65,7 @@ MainWindow::MainWindow(QWidget *parent)
         ui->picture->setPath(path);
         QModelIndex index = mMapModel->index(path);
         if (index.isValid())
-            mMapModel->setCurrentRow(index.row());
+            mMapModel->setCurrentRow(index.row()); // <1>
     });
     connect(ui->map, &QQuickWidget::statusChanged, [this](QQuickWidget::Status status){
         if (status == QQuickWidget::Status::Error) {
@@ -86,7 +86,7 @@ MainWindow::MainWindow(QWidget *parent)
         QModelIndex index = mMapModel->index(row, 0);
         if (index.isValid()) {
             auto files = mMapModel->data(index, MapPhotoListModel::Role::Files).toStringList();
-            selectPicture(files.size() == 1 ? files.first() : "");
+            selectPicture(files.size() == 1 ? files.first() : ""); // <1>
         }
     });
 
@@ -349,6 +349,7 @@ void MainWindow::showTooltip(const QPoint& pos)
     {
         widget = new ToolTip(this);
         connect(widget->selectionModel(), &QItemSelectionModel::currentChanged, this, [this](const QModelIndex& index){
+            QSignalBlocker lock(mMapModel); // fix preview disappears the first time you click on the tooltip, see <1>
             selectPicture(widget->model()->data(index, ToolTip::FilePathRole).toString());
         });
     }
