@@ -69,5 +69,8 @@ SOURCES += \
 INCLUDEPATH += \
     $$PWD
 
+
+STDINT_FILE = $${LITERAL_HASH}include<stdint.h>
+write_file($$OUT_PWD/libexif/_stdint.h, STDINT_FILE)
 write_file($$OUT_PWD/config.h)
 DEFINES += GETTEXT_PACKAGE # TODO
