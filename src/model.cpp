@@ -113,6 +113,8 @@ void Checker::updateChildrenCheckState(const QModelIndex &index)
 
 void ExifReader::parse(const QString& file)
 {
+    if (!sender()) return; // disconnected
+
     Exif::File exif;
     if (!exif.load(QDir::toNativeSeparators(file), false))
     {
@@ -181,10 +183,13 @@ ExifStorage* ExifStorage::instance()
     return &storage;
 }
 
-ExifStorage::~ExifStorage()
+void ExifStorage::destroy()
 {
-    mThread.quit();
-    mThread.wait();
+    auto storage = instance();
+    storage->disconnect();
+
+    storage->mThread.quit();
+    storage->mThread.wait();
 }
 
 bool ExifStorage::fillData(const QString& path, Photo* photo)

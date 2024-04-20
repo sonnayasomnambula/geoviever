@@ -106,6 +106,7 @@ MainWindow::~MainWindow()
 void MainWindow::closeEvent(QCloseEvent* /*e*/)
 {
     saveSettings();
+    ExifStorage::destroy();
 }
 
 bool MainWindow::eventFilter(QObject* o, QEvent* e)

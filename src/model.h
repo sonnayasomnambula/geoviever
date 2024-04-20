@@ -61,9 +61,6 @@ class ExifReader : public QObject
 {
     Q_OBJECT
 
-public:
-    using QObject::QObject;
-
 signals:
     void ready(Photo photo);
 
@@ -81,8 +78,7 @@ signals:
 
 public:
     static ExifStorage* instance();
-
-   ~ExifStorage() override;
+    static void destroy();
 
     static bool fillData(const QString& path, Photo* photo);
     static QPointF coords(const QString& path);
