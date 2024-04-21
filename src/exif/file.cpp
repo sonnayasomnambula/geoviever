@@ -296,6 +296,27 @@ QByteArray Exif::File::ascii(ExifIfd ifd, ExifTag tag) const
     return d;
 }
 
+template <typename T>
+T extract(ExifEntry* entry, T notset)
+{
+    T value = notset;
+
+    if (entry && entry->size == sizeof(value))
+        memcpy(&value, entry->data, entry->size);
+
+    return value;
+}
+
+uint16_t Exif::File::int16u(ExifIfd ifd, ExifTag tag, uint16_t notset) const
+{
+    return extract(exif_content_get_entry(mExifData->ifd[ifd], tag), notset);
+}
+
+uint32_t Exif::File::int32u(ExifIfd ifd, ExifTag tag, uint32_t notset) const
+{
+    return extract(exif_content_get_entry(mExifData->ifd[ifd], tag), notset);
+}
+
 namespace Pics
 {
 
@@ -321,6 +342,8 @@ QPixmap fromImageReader(QImageReader* reader, int width, int height)
 
 QPixmap Exif::File::thumbnail(int width, int height) const
 {
+    // TODO load JPEG marker
+
     if (mExifData && mExifData->data && mExifData->size)
     {
         QByteArray data = QByteArray::fromRawData(reinterpret_cast<const char*>(mExifData->data), mExifData->size); // not copied

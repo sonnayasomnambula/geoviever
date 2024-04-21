@@ -115,6 +115,8 @@ void ExifReader::parse(const QString& file)
 {
     if (!sender()) return; // disconnected
 
+    qDebug() << Q_FUNC_INFO << file;
+
     Exif::File exif;
     if (!exif.load(QDir::toNativeSeparators(file), false))
     {
@@ -137,11 +139,9 @@ void ExifReader::parse(const QString& file)
         photo.position = { coords.latitude(), coords.longitude() };
     }
 
-    QPixmap pix;
-    if (pix.load(photo.path))
-        photo.pixmap = Pics::toBase64(Pics::thumbnail(pix, 32), "JPEG"); // TODO magic constant
-    // else
-    //     photo.pixmap = ":/img/not_available.png"; // TODO
+    QPixmap pix = exif.thumbnail(32, 32); // TODO magic constant
+    if (!pix.isNull())
+        photo.pixmap = Pics::toBase64(pix, "JPEG");
 
     emit ready(photo);
 }

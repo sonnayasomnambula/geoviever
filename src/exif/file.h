@@ -46,6 +46,9 @@ public:
     void setValue(ExifIfd ifd, ExifTag tag, const QByteArray& ascii);
     QByteArray ascii(ExifIfd ifd, ExifTag tag) const;
 
+    uint16_t int16u(ExifIfd ifd, ExifTag tag, uint16_t notset = 0) const;
+    uint32_t int32u(ExifIfd ifd, ExifTag tag, uint32_t notset = 0) const;
+
     QPixmap thumbnail(int width = 0, int height = 0) const;
 
     const QString& errorString() const { return mErrorString; }
