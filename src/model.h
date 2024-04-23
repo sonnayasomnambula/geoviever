@@ -9,10 +9,13 @@
 #include <QSortFilterProxyModel>
 #include <QThread>
 
+#include "exif/file.h"
+
 struct Photo
 {
     QString path;
     QPointF position;
+    Exif::Orientation orientation;
     QString pixmap; // base64 thumbnail
 };
 

@@ -39,6 +39,16 @@ Exif::File::~File()
     exif_mem_unref(mAllocator);
 }
 
+static inline uint16_t little_endian_to_big_endian(uint16_t value) {
+    return (value & 0xFF00) >> 8 | (value & 0x00FF) << 8;
+}
+
+static inline bool read_big_endian(uint16_t* value, FILE* file) {
+    if (fread(value, sizeof(*value), 1, file) != 1)
+        return false;
+    *value = little_endian_to_big_endian(*value);
+    return true;
+}
 
 /// \brief load all EXIF tags from \a fileName;
 /// creates an empty storage if there are no tags in the file
@@ -54,7 +64,7 @@ bool Exif::File::load(const QString& fileName, bool createIfEmpty)
     {
         // exif_data_new_from_file
 
-        ExifData *edata;
+        ExifData* edata;
         ExifLoader *loader;
 
         loader = exif_loader_new ();
@@ -62,7 +72,7 @@ bool Exif::File::load(const QString& fileName, bool createIfEmpty)
         {
             // exif_loader_write_file
 
-            FILE *f;
+            FILE* f;
             int size;
             unsigned char data[1024];
 
@@ -84,6 +94,43 @@ bool Exif::File::load(const QString& fileName, bool createIfEmpty)
                 if (!exif_loader_write (loader, data, size))
                     break;
             }
+
+            // image width and height can be found in some JPEG start-of-frame markers
+            // TODO update libjpeg and don't stradat hernya (one can use QImageReader::size() as well)
+
+            uint16_t marker_size = 0;
+
+            fseek(f, 2, SEEK_SET); // skip 0xFFD8 starting signature
+            while (1) {
+                while (fgetc(f) != 0xFF && !feof(f)) /* go ahead */;
+                int marker = fgetc(f);
+                if (!JPEG_IS_MARKER(marker))
+                    continue;
+
+                if (!read_big_endian(&marker_size, f))
+                    break;
+
+                if (marker == JPEG_MARKER_SOF0 ||   // Baseline
+                    marker == JPEG_MARKER_SOF1 ||   // Extended sequential, Huffman
+                    marker == JPEG_MARKER_SOF2 ||   // Progressive, Huffman
+                    marker == JPEG_MARKER_SOF3 ||   // Lossless, Huffman
+                    marker == JPEG_MARKER_SOF9 ||   // Extended sequential, arithmetic
+                    marker == JPEG_MARKER_SOF10 ||  // Progressive, arithmetic
+                    marker == JPEG_MARKER_SOF11) {  // Lossless, arithmetic
+                    fseek(f, 1, SEEK_CUR);
+                    if (!read_big_endian(&mHeight, f)) break;
+                    if (!read_big_endian(&mWidth, f)) break;
+                    if (mWidth && mHeight) break; // got it, ok
+                    if (marker_size > 5) {
+                        fseek(f, marker_size - 5, SEEK_CUR); // skip the rest of the marker
+                    }
+                } else if (marker_size > 2) {
+                    fseek(f, marker_size - 2, SEEK_CUR); // skip this marker
+                } else {
+                    break; // something unexpected
+                }
+            }
+
             fclose (f);
         }
 
@@ -197,6 +244,8 @@ bool Exif::File::save(const QString& fileName)
 
 void Exif::File::setValue(ExifIfd ifd, ExifTag tag, const QVector<ExifRational> urational)
 {
+    if (!mExifData) return;
+
     ExifEntry* entry = exif_content_get_entry(mExifData->ifd[ifd], tag);
     void* memory;
 
@@ -236,7 +285,7 @@ void Exif::File::setValue(ExifIfd ifd, ExifTag tag, const QVector<ExifRational> 
 QVector<ExifRational> Exif::File::uRationalVector(ExifIfd ifd, ExifTag tag) const
 {
     QVector<ExifRational> value;
-    ExifEntry* entry = exif_content_get_entry(mExifData->ifd[ifd], tag);
+    ExifEntry* entry = mExifData ? exif_content_get_entry(mExifData->ifd[ifd], tag) : nullptr;
     if (!entry) return value;
 
     value.reserve(entry->components);
@@ -249,6 +298,8 @@ QVector<ExifRational> Exif::File::uRationalVector(ExifIfd ifd, ExifTag tag) cons
 
 void Exif::File::setValue(ExifIfd ifd, ExifTag tag, const QByteArray& ascii)
 {
+    if (!mExifData) return;
+
     void* memory;
     size_t size = static_cast<size_t>(ascii.size());
     if (size && *ascii.rbegin())
@@ -287,7 +338,7 @@ void Exif::File::setValue(ExifIfd ifd, ExifTag tag, const QByteArray& ascii)
 
 QByteArray Exif::File::ascii(ExifIfd ifd, ExifTag tag) const
 {
-    ExifEntry* entry = exif_content_get_entry(mExifData->ifd[ifd], tag);
+    ExifEntry* entry = mExifData ? exif_content_get_entry(mExifData->ifd[ifd], tag) : nullptr;
     if (!entry) return {};
 
     QByteArray d(reinterpret_cast<char*>(entry->data), entry->size);
@@ -297,7 +348,7 @@ QByteArray Exif::File::ascii(ExifIfd ifd, ExifTag tag) const
 }
 
 template <typename T>
-T extract(ExifEntry* entry, T notset)
+static T extract(ExifEntry* entry, T notset)
 {
     T value = notset;
 
@@ -309,18 +360,55 @@ T extract(ExifEntry* entry, T notset)
 
 uint16_t Exif::File::int16u(ExifIfd ifd, ExifTag tag, uint16_t notset) const
 {
-    return extract(exif_content_get_entry(mExifData->ifd[ifd], tag), notset);
+    return mExifData ? extract(exif_content_get_entry(mExifData->ifd[ifd], tag), notset) : notset;
 }
 
 uint32_t Exif::File::int32u(ExifIfd ifd, ExifTag tag, uint32_t notset) const
 {
-    return extract(exif_content_get_entry(mExifData->ifd[ifd], tag), notset);
+    return mExifData ? extract(exif_content_get_entry(mExifData->ifd[ifd], tag), notset) : notset;
 }
 
 namespace Pics
 {
 
-QPixmap fromImageReader(QImageReader* reader, int width, int height)
+QPixmap fromImageReader(QImageReader* reader, int width, int height, Exif::Orientation orientation)
+{
+    switch (orientation) {
+    case Exif::Orientation::MirrorHorizontalAndRotate270CW:
+    case Exif::Orientation::Rotate90CW:
+    case Exif::Orientation::MirrorHorizontalAndRotate90CW:
+    case Exif::Orientation::Rotate270CW:
+        std::swap(width, height);
+    }
+
+    QPixmap pic = fromImageReader(reader, width, height);
+
+    QTransform transformation;
+
+    if (orientation == Exif::Orientation::MirrorHorizontal) {
+        transformation.scale(1, -1);
+    } else if (orientation == Exif::Orientation::Rotate180) {
+        transformation.rotate(180);
+    } else if (orientation == Exif::Orientation::MirrorVertical) {
+        transformation.scale(-1, 1);
+    } else if (orientation == Exif::Orientation::MirrorHorizontalAndRotate270CW) {
+        transformation.scale(1, -1);
+        transformation.rotate(270);
+    } else if (orientation == Exif::Orientation::Rotate90CW) {
+        transformation.rotate(90);
+    } else if (orientation == Exif::Orientation::MirrorHorizontalAndRotate90CW) {
+        transformation.scale(1, -1);
+        transformation.rotate(90);
+    } else if (orientation == Exif::Orientation::Rotate270CW) {
+        transformation.rotate(270);
+    } else {
+        return pic;
+    }
+
+    return pic.transformed(transformation);
+}
+
+QPixmap fromImageReader(QImageReader *reader, int width, int height)
 {
     if (width == 0 || height == 0)
         return QPixmap::fromImageReader(reader);
@@ -332,9 +420,9 @@ QPixmap fromImageReader(QImageReader* reader, int width, int height)
     QSize cropped_size = size * std::max(dw, dh);
     reader->setScaledSize(cropped_size);
     reader->setScaledClipRect(QRect((cropped_size.width() - width) / 2,
-                             (cropped_size.height() - height) / 2,
-                             width,
-                             height));
+                                    (cropped_size.height() - height) / 2,
+                                    width,
+                                    height));
     return QPixmap::fromImageReader(reader);
 }
 
@@ -344,19 +432,35 @@ QPixmap Exif::File::thumbnail(int width, int height) const
 {
     // TODO load JPEG marker
 
+    Orientation orientation = this->orientation();
+
     if (mExifData && mExifData->data && mExifData->size)
     {
         QByteArray data = QByteArray::fromRawData(reinterpret_cast<const char*>(mExifData->data), mExifData->size); // not copied
         QBuffer buffer(&data);
         QImageReader reader(&buffer);
-        return Pics::fromImageReader(&reader, width, height);
+
+        // fix non-rotated EXIF thumbnail
+        QSize size = reader.size();
+        if (size.isValid() && orientation == Orientation::Normal && ((width > height) != (size.width() > size.height())))
+        {
+            std::swap(width, height);
+            orientation = Orientation::Rotate270CW;
+        }
+
+        return Pics::fromImageReader(&reader, width, height, orientation);
     }
 
     if (!mFileName.isEmpty())
     {
         QImageReader reader(mFileName);
-        return Pics::fromImageReader(&reader, width, height);
+        return Pics::fromImageReader(&reader, width, height, orientation);
     }
 
     return {};
+}
+
+Exif::Orientation Exif::File::orientation() const
+{
+    return static_cast<Orientation>(int16u(EXIF_IFD_0, EXIF_TAG_ORIENTATION, static_cast<uint16_t>(Orientation::Unknown)));
 }

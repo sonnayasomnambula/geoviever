@@ -25,7 +25,6 @@ void PixmapLabel::setPixmap(const QPixmap &pixmap)
 void PixmapLabel::setPath(const QString& path)
 {
     mPath = path;
-    setPixmap(QPixmap(path));
     setCursor(path.isEmpty() ? Qt::ArrowCursor : Qt::PointingHandCursor);
     setStatusTip(mPath);
 }

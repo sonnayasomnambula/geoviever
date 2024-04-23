@@ -15,6 +15,18 @@ struct _ExifMem;
 
 namespace Exif {
 
+enum class Orientation {
+    Unknown,
+    Normal,
+    MirrorHorizontal,
+    Rotate180,
+    MirrorVertical,
+    MirrorHorizontalAndRotate270CW,
+    Rotate90CW,
+    MirrorHorizontalAndRotate90CW,
+    Rotate270CW
+};
+
 /// EXIF tags are stored in several groups called IFDs.
 /// You can load all tags from the file with load function.
 /// Set functions replaces an existing tag in a ifd or creates a new one.
@@ -28,6 +40,9 @@ private:
     ExifData* mExifData = nullptr;
     ExifMem* mAllocator = nullptr;
     ExifLog* mLog = nullptr;
+
+    uint16_t mWidth = 0;
+    uint16_t mHeight = 0;
 
     QString mErrorString;
 
@@ -51,6 +66,10 @@ public:
 
     QPixmap thumbnail(int width = 0, int height = 0) const;
 
+    Orientation orientation() const;
+    int width() const { return mWidth; }
+    int height() const { return mHeight; }
+
     const QString& errorString() const { return mErrorString; }
 };
 
@@ -60,6 +79,7 @@ class QImageReader;
 namespace Pics
 {
 
+QPixmap fromImageReader(QImageReader* reader, int width, int height, Exif::Orientation orientation);
 QPixmap fromImageReader(QImageReader* reader, int width, int height);
 
 }

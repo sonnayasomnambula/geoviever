@@ -115,8 +115,6 @@ void ExifReader::parse(const QString& file)
 {
     if (!sender()) return; // disconnected
 
-    qDebug() << Q_FUNC_INFO << file;
-
     Exif::File exif;
     if (!exif.load(QDir::toNativeSeparators(file), false))
     {
@@ -138,6 +136,8 @@ void ExifReader::parse(const QString& file)
         QGeoCoordinate coords = Exif::Utils::fromLatLon(lat, latRef, lon, lonRef);
         photo.position = { coords.latitude(), coords.longitude() };
     }
+
+    photo.orientation = exif.orientation();
 
     QPixmap pix = exif.thumbnail(32, 32); // TODO magic constant
     if (!pix.isNull())
@@ -168,7 +168,7 @@ void ExifStorage::add(const Photo &photo)
 
 Photo ExifStorage::dummy(const QString& path)
 {
-    return { path, {}, {} };
+    return { path, {}, Exif::Orientation::Unknown, {} };
 }
 
 ExifStorage ExifStorage::init()

@@ -5,6 +5,7 @@
 #include <QFileSystemModel>
 #include <QGeoCoordinate>
 #include <QKeyEvent>
+#include <QImageReader>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQmlError>
@@ -61,8 +62,29 @@ MainWindow::MainWindow(QWidget *parent)
     ui->tree->setItemDelegateForColumn(FileTreeModel::COLUMN_COORDS, new GeoCoordinateDelegate(this));
     ui->tree->setModel(mTreeModel);
     connect(ui->tree->selectionModel(), &QItemSelectionModel::currentRowChanged, this, [this]{
-        QString path = mTreeModel->filePath(ui->tree->currentIndex());
+        auto idx = ui->tree->currentIndex();
+        if (mTreeModel->isDir(idx))
+        {
+            ui->picture->setPath("");
+            ui->picture->setPixmap({});
+            mMapModel->setCurrentRow(-1);
+            return;
+        }
+
+        QString path = mTreeModel->filePath(idx);
         ui->picture->setPath(path);
+
+        Photo photo;
+        if (!ExifStorage::fillData(path, &photo))
+        {
+            Exif::File exif;
+            exif.load(path, false);
+            photo.orientation = exif.orientation();
+        }
+
+        QImageReader reader(path);
+        ui->picture->setPixmap(Pics::fromImageReader(&reader, 0, 0, photo.orientation));
+
         QModelIndex index = mMapModel->index(path);
         if (index.isValid())
             mMapModel->setCurrentRow(index.row()); // <1>
