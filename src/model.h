@@ -6,8 +6,10 @@
 #include <QMap>
 #include <QMutex>
 #include <QPersistentModelIndex>
+#include <QSharedPointer>
 #include <QSortFilterProxyModel>
 #include <QThread>
+#include <QVector>
 
 #include "exif/file.h"
 
@@ -19,7 +21,7 @@ struct Photo
     QString pixmap; // base64 thumbnail
 };
 
-Q_DECLARE_METATYPE(Photo)
+Q_DECLARE_METATYPE(QSharedPointer<Photo>)
 
 bool operator ==(const Photo& L, const Photo& R);
 bool operator !=(const Photo& L, const Photo& R);
@@ -55,14 +57,13 @@ class ExifReader : public QObject
     Q_OBJECT
 
 signals:
-    void ready(Photo photo);
+    void ready(const QSharedPointer<Photo>& photo);
 
 public slots:
     void parse(const QString& file);
 
 public:
-    // TODO return QSharedPointer<Photo>
-    static bool load(Photo* photo, const QString& file);
+    static QSharedPointer<Photo> load(const QString& file);
 };
 
 class ExifStorage : public QObject
@@ -71,25 +72,25 @@ class ExifStorage : public QObject
 
 signals:
     void parse(const QString& file);
-    void ready(Photo photo);
+    void ready(const QSharedPointer<Photo>& photo);
 
 public:
     static ExifStorage* instance();
     static void destroy();
 
-    static bool fillData(const QString& path, Photo* photo);
+    static QSharedPointer<Photo> data(const QString& path);
     static QPointF coords(const QString& path);
 
 private:
     ExifStorage();
-    void add(const Photo& photo);
+    void add(const QSharedPointer<Photo>& photo);
     static Photo dummy(const QString& path);
 
     static ExifStorage init();
 
     QThread mThread;
     mutable QMutex mMutex;
-    QMap<QString, Photo> mData;
+    QMap<QString, QSharedPointer<Photo>> mData;
     QStringList mInProgress;
 };
 
@@ -146,7 +147,7 @@ public:
 
     void insert(const QString& path);
     void remove(const QString& path);
-    void update(const Photo& photo);
+    void update(const QSharedPointer<Photo> &photo);
 
     void setZoom(qreal zoom);
     void setCenter(const QGeoCoordinate& center);
@@ -162,15 +163,15 @@ private:
 
     struct Bucket
     {
-        QList<Photo> photos;
+        QVector<QSharedPointer<Photo>> photos;
         QPointF position;
 
         Bucket() = default;
-        Bucket(const Photo& photo);
+        Bucket(const QSharedPointer<Photo>& photo);
 
-        bool insert(const Photo& photo);
+        bool insert(const QSharedPointer<Photo>& photo);
         bool remove(const QString& path);
-        static bool isValid(const Photo& photo);
+        static bool isValid(const QSharedPointer<Photo>& photo);
 
         QStringList files() const;
 
@@ -184,7 +185,7 @@ private:
     public:
         BucketList(MapPhotoListModel* model = nullptr) : mModel(model) {}
 
-        int insert(const Photo& photo, double zoom);
+        bool insert(const QSharedPointer<Photo>& photo, double zoom);
         bool remove(const QString& path);
         void updateFrom(const BucketList& other);
 

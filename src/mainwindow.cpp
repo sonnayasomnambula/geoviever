@@ -74,16 +74,14 @@ MainWindow::MainWindow(QWidget *parent)
         QString path = mTreeModel->filePath(idx);
         ui->picture->setPath(path);
 
-        Photo photo;
-        if (!ExifStorage::fillData(path, &photo))
-        {
-            Exif::File exif;
-            exif.load(path, false);
-            photo.orientation = exif.orientation();
-        }
+        Exif::Orientation orientation;
+        if (auto photo = ExifStorage::data(path))
+            orientation = photo->orientation;
+        else
+            orientation = Exif::File(path, false).orientation();
 
         QImageReader reader(path);
-        ui->picture->setPixmap(Pics::fromImageReader(&reader, photo.orientation));
+        ui->picture->setPixmap(Pics::fromImageReader(&reader, orientation));
 
         if (idx.isValid())
         {
@@ -198,11 +196,9 @@ class ToolTip : public QTableView
             if (internalIndex >= mData.size())
                 return {};
 
-            static Photo photo;
-
             if (role == Qt::DecorationRole)
-                if (ExifStorage::fillData(mData[internalIndex], &photo))
-                    return Pics::fromBase64(photo.pixmap);
+                if (auto photo = ExifStorage::data(mData[internalIndex]))
+                    return Pics::fromBase64(photo->pixmap);
 
             if (role == FilePathRole)
                 return mData[internalIndex];
@@ -378,10 +374,9 @@ void MainWindow::showTooltip(const QPoint& pos)
         });
         connect(widget, &ToolTip::doubleClicked, this, [this](const QModelIndex& index){
             QString path = widget->model()->data(index, ToolTip::FilePathRole).toString();
-            Photo photo;
-            if (ExifStorage::fillData(path, &photo)) {
+            if (auto photo = ExifStorage::data(path)) {
                 mMapModel->setZoom(18);
-                mMapModel->setCenter(QGeoCoordinate(photo.position.x(), photo.position.y()));
+                mMapModel->setCenter(QGeoCoordinate(photo->position.x(), photo->position.y()));
             }
         });
     }
@@ -414,16 +409,14 @@ void MainWindow::selectPicture(const QString& path)
 
     ui->picture->setPath(path);
 
-    Photo photo;
-    if (!ExifStorage::fillData(path, &photo))
-    {
-        Exif::File exif;
-        exif.load(path, false);
-        photo.orientation = exif.orientation();
-    }
+    Exif::Orientation orientation;
+    if (auto photo = ExifStorage::data(path))
+        orientation = photo->orientation;
+    else
+        orientation = Exif::File(path, false).orientation();
 
     QImageReader reader(path);
-    ui->picture->setPixmap(Pics::fromImageReader(&reader, photo.orientation));
+    ui->picture->setPixmap(Pics::fromImageReader(&reader, orientation));
 }
 
 void MainWindow::on_pickRoot_clicked()

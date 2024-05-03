@@ -84,17 +84,17 @@ void ExifReader::parse(const QString& file)
 {
     if (!sender()) return; // disconnected
 
-    Photo photo;
-    if (load(&photo, file))
+    if (auto photo = load(file))
         emit ready(photo);
 }
 
-bool ExifReader::load(Photo* photo, const QString& file)
+QSharedPointer<Photo> ExifReader::load(const QString &file)
 {
     Exif::File exif;
     if (!exif.load(QDir::toNativeSeparators(file), false))
-        return false; // no EXIF here
+        return {}; // no EXIF here
 
+    auto photo = QSharedPointer<Photo>::create();
     photo->path = file;
 
     auto lat = exif.uRationalVector(EXIF_IFD_GPS, Exif::Tag::GPS::LATITUDE);
@@ -114,7 +114,7 @@ bool ExifReader::load(Photo* photo, const QString& file)
     if (!pix.isNull())
         photo->pixmap = Pics::toBase64(pix, "JPEG");
 
-    return true;
+    return photo;
 }
 
 ExifStorage::ExifStorage()
@@ -127,11 +127,11 @@ ExifStorage::ExifStorage()
     mThread.start();
 }
 
-void ExifStorage::add(const Photo &photo)
+void ExifStorage::add(const QSharedPointer<Photo>& photo)
 {
     {
         QMutexLocker lock(&mMutex);
-        mData[photo.path] = photo;
+        mData[photo->path] = photo;
     }
 
     emit ready(photo);
@@ -144,7 +144,7 @@ Photo ExifStorage::dummy(const QString& path)
 
 ExifStorage ExifStorage::init()
 {
-    qRegisterMetaType<Photo>();
+    qRegisterMetaType< QSharedPointer<Photo> >();
     return {};
 }
 
@@ -163,16 +163,13 @@ void ExifStorage::destroy()
     storage->mThread.wait();
 }
 
-bool ExifStorage::fillData(const QString& path, Photo* photo)
+QSharedPointer<Photo> ExifStorage::data(const QString& path)
 {
     auto storage = instance();
     QMutexLocker lock(&storage->mMutex);
     auto i = storage->mData.constFind(path);
     if (i != storage->mData.constEnd())
-    {
-        *photo = *i;
-        return true;
-    }
+        return *i;
 
     if (!storage->mInProgress.contains(path))
     {
@@ -180,7 +177,7 @@ bool ExifStorage::fillData(const QString& path, Photo* photo)
         emit storage->parse(path);
     }
 
-    return false;
+    return {};
 }
 
 QPointF ExifStorage::coords(const QString& path)
@@ -189,7 +186,7 @@ QPointF ExifStorage::coords(const QString& path)
     QMutexLocker lock(&storage->mMutex);
     auto i = storage->mData.constFind(path);
     if (i != storage->mData.constEnd())
-        return i->position;
+        return (*i)->position;
 
     if (!storage->mInProgress.contains(path))
     {
@@ -205,8 +202,8 @@ FileTreeModel::FileTreeModel(QObject *parent)
 {
     qDebug() << "main thread ID is" << QThread::currentThreadId();
 
-    connect(ExifStorage::instance(), &ExifStorage::ready, this, [this](const Photo& photo){
-        QModelIndex i = index(photo.path);
+    connect(ExifStorage::instance(), &ExifStorage::ready, this, [this](const QSharedPointer<Photo>& photo){
+        QModelIndex i = index(photo->path);
         if (i.isValid()) {
             i = i.siblingAtColumn(COLUMN_COORDS);
             emit dataChanged(i, i, { Qt::DisplayRole });
@@ -318,7 +315,7 @@ QVariant MapPhotoListModel::data(const QModelIndex& index, int role) const
         return bucket.position.y();
 
     if (role == Role::Pixmap)
-        return bucket.photos.size() == 1 ? bucket.photos.first().pixmap : mBubbles.bubble(bucket.photos.size());
+        return bucket.photos.size() == 1 ? bucket.photos.first()->pixmap : mBubbles.bubble(bucket.photos.size());
 
     if (role == Role::Files)
         return bucket.files();
@@ -340,9 +337,7 @@ QHash<int, QByteArray> MapPhotoListModel::roleNames() const
 void MapPhotoListModel::insert(const QString& path)
 {
     mKeys.append(path);
-
-    Photo photo;
-    if (ExifStorage::fillData(path, &photo))
+    if (auto photo = ExifStorage::data(path))
         mBuckets.insert(photo, mZoom);
 }
 
@@ -356,9 +351,9 @@ void MapPhotoListModel::remove(const QString& path)
     }
 }
 
-void MapPhotoListModel::update(const Photo& photo)
+void MapPhotoListModel::update(const QSharedPointer<Photo>& photo)
 {
-    if (mKeys.contains(photo.path))
+    if (mKeys.contains(photo->path))
         mBuckets.insert(photo, mZoom);
 }
 
@@ -383,9 +378,9 @@ QModelIndex MapPhotoListModel::index(const QString& path)
 {
     for (int row = 0; row < mBuckets.size(); ++row)
     {
-        for (const Photo& photo: mBuckets.at(row).photos)
+        for (const auto& photo: mBuckets.at(row).photos)
         {
-            if (photo.path == path)
+            if (photo && photo->path == path)
             {
                 return index(row, 0);
             }
@@ -414,7 +409,7 @@ void MapPhotoListModel::updateBuckets()
 {
     BucketList buckets;
     for (const Bucket& b: mBuckets)
-        for (const Photo& p: b.photos)
+        for (const auto& p: b.photos)
             buckets.insert(p, mZoom);
 
     if (buckets != mBuckets)
@@ -425,23 +420,23 @@ void MapPhotoListModel::updateBuckets()
     }
 }
 
-MapPhotoListModel::Bucket::Bucket(const Photo& photo)
+MapPhotoListModel::Bucket::Bucket(const QSharedPointer<Photo> &photo)
 {
     insert(photo);
 }
 
-bool MapPhotoListModel::Bucket::insert(const Photo& photo)
+bool MapPhotoListModel::Bucket::insert(const QSharedPointer<Photo> &photo)
 {
     if (!isValid(photo))
         return false;
 
-    for (const Photo& item: photos)
-        if (item.path == photo.path)
+    for (const auto& item: photos)
+        if (item->path == photo->path)
             return false;
 
     position *= photos.size();
     photos.append(photo);
-    position += photo.position;
+    position += photo->position;
     position /= photos.size();
 
     return true;
@@ -451,30 +446,33 @@ bool MapPhotoListModel::Bucket::remove(const QString& path)
 {
     for (int i = 0; i < photos.size(); ++i)
     {
-        if (photos[i].path == path)
+        if (const auto& photo = photos[i])
         {
-            QPointF pos = position * photos.size();
-            pos -= photos[i].position;
-            photos.removeAt(i);
-            pos /= photos.size();
-            return true;
+            if (photo->path == path)
+            {
+                QPointF pos = position * photos.size();
+                pos -= photo->position;
+                photos.removeAt(i);
+                pos /= photos.size();
+                return true;
+            }
         }
     }
 
     return false;
 }
 
-bool MapPhotoListModel::Bucket::isValid(const Photo& photo)
+bool MapPhotoListModel::Bucket::isValid(const QSharedPointer<Photo> &photo)
 {
-    return !photo.path.isEmpty() && !photo.pixmap.isEmpty() && !photo.position.isNull();
+    return photo && !photo->path.isEmpty() && !photo->pixmap.isEmpty() && !photo->position.isNull();
 }
 
 QStringList MapPhotoListModel::Bucket::files() const
 {
     QStringList list;
     list.reserve(photos.size());
-    for (const Photo& photo: photos)
-    list.append(photo.path);
+    for (const QSharedPointer<Photo>& photo: photos)
+        list.append(photo->path);
     return list;
 }
 
@@ -521,9 +519,12 @@ QPixmap Bubbles::generate(int value, int size, const QColor& color)
     return pix;
 }
 
-int MapPhotoListModel::BucketList::insert(const Photo& photo, double zoom)
+bool MapPhotoListModel::BucketList::insert(const QSharedPointer<Photo>& photo, double zoom)
 {
-    QGeoCoordinate position(photo.position.x(), photo.position.y());
+    if (!photo)
+        return false;
+
+    QGeoCoordinate position(photo->position.x(), photo->position.y());
     for (int row = 0; row < size(); ++row)
     {
         Bucket& bucket = (*this)[row];
@@ -541,7 +542,7 @@ int MapPhotoListModel::BucketList::insert(const Photo& photo, double zoom)
                 QModelIndex index = mModel->index(row, 0);
                 emit mModel->dataChanged(index, index, { Role::Latitude, Role::Longitude, Role::Pixmap });
             }
-            return row;
+            return true;
         }
     }
 
@@ -549,7 +550,7 @@ int MapPhotoListModel::BucketList::insert(const Photo& photo, double zoom)
     append(photo);
     if (mModel) mModel->endInsertRows();
 
-    return size();
+    return true;
 }
 
 bool MapPhotoListModel::BucketList::remove(const QString& path)

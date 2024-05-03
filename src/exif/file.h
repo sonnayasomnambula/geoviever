@@ -58,6 +58,7 @@ private:
     QString mErrorString;
 
 public:
+    File(const QString& fileName, bool createIfEmpty = true) { load(fileName, createIfEmpty); }
     File();
    ~File();
 
