@@ -5,12 +5,14 @@
 #include <QModelIndex>
 #include <QPainter>
 #include <QPixmap>
+#include <QImageReader>
 #include <QThread>
 
 #include <cmath>
 
 #include "exif/file.h"
 #include "exif/utils.h"
+#include "qexifimageheader.h"
 #include "model.h"
 #include "pics.h"
 
@@ -80,6 +82,35 @@ void Checker::updateChildrenCheckState(const QModelIndex &index)
     }
 }
 
+QPointF fromLatLon(const QVector<QExifURational>& lat, const QByteArray& latRef, const QVector<QExifURational>& lon, const QByteArray& lonRef)
+{
+    if (lat.size() != 3 || lon.size() != 3) {
+        qWarning() << "Exif: unsupported latlon format" << lat << latRef << lon << lonRef;
+        return {};
+    }
+
+    class DMS {
+        double d, m, s;
+    public:
+        explicit DMS(const QVector<QExifURational>& value) :
+            d(1.0 * value[0].first / value[0].second),
+            m(1.0 * value[1].first / value[1].second),
+            s(1.0 * value[2].first / value[2].second)
+        {}
+        double join() { return d + m / 60 + s / 60 / 60; }
+    };
+
+    double llat = DMS(lat).join();
+    double llon = DMS(lon).join();
+
+    if (latRef == "S")
+        llat = -llat;
+    if (lonRef == "W")
+        llon = -llon;
+
+    return QPointF(llat, llon);
+}
+
 void ExifReader::parse(const QString& file)
 {
     if (!sender()) return; // disconnected
@@ -113,6 +144,61 @@ bool ExifReader::load(Photo* photo, const QString& file)
     QPixmap pix = exif.thumbnail(32, 32); // TODO magic constant
     if (!pix.isNull())
         photo->pixmap = Pics::toBase64(pix, "JPEG");
+
+    return true;
+}
+
+// QExifImageHeader class can be used for reading EXIF data
+// but writing contains a lot of bugs, so this method is not used
+bool ExifReader::load_q(Photo* photo, const QString& file)
+{
+    QExifImageHeader header;
+    if (!header.loadFromJpeg(file))
+        return false;
+
+    photo->path = file;
+
+    photo->orientation = static_cast<Exif::Orientation>(header.value(QExifImageHeader::Orientation).toShort());
+
+    auto latTag = header.value(QExifImageHeader::GpsLatitude).toRationalVector();
+    auto lonTag = header.value(QExifImageHeader::GpsLongitude).toRationalVector();
+    auto latRef = header.value(QExifImageHeader::GpsLatitudeRef).toByteArray();
+    auto lonRef = header.value(QExifImageHeader::GpsLongitudeRef).toByteArray();
+
+    if (latTag.size() == 3 && lonTag.size() == 3)
+    {
+        photo->position = fromLatLon(latTag, latRef, lonTag, lonRef);
+    }
+
+    QPixmap pix;
+    auto thumbnail = header.thumbnailData();
+    if (!thumbnail.data.isEmpty())
+    {
+        QBuffer buffer(&thumbnail.data);
+        QImageReader reader(&buffer);
+        auto orientation = static_cast<Exif::Orientation>(thumbnail.orientation);
+        pix = Pics::fromImageReader(&reader, 32, 32, orientation == Exif::Orientation::Unknown ? photo->orientation : orientation);
+        if (orientation == Exif::Orientation::Unknown && photo->orientation != Exif::Orientation::Unknown)
+        {
+            QSize size_tmb = reader.size();
+            QSize size_img = QImageReader(file).size();
+
+            // fix FastStone batch resized images
+            if ((size_img.width() > size_img.height()) != (size_tmb.width() > size_tmb.height()))
+                pix = pix.transformed(QTransform().rotate(270));
+        }
+    }
+
+    if (pix.isNull())
+    {
+        QImageReader reader(file);
+        pix = Pics::fromImageReader(&reader, 32, 32, photo->orientation);
+    }
+
+    if (!pix.isNull())
+    {
+        photo->pixmap = Pics::toBase64(pix, "JPEG");
+    }
 
     return true;
 }

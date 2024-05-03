@@ -6,6 +6,7 @@ include(src/3rdparty/libexif/libexif.pri)
 include(src/3rdparty/libjpeg/libjpeg.pri)
 
 SOURCES += \
+    src/3rdparty/sigvdr.de/qexifimageheader.cpp \
     src/exif/file.cpp \
     src/exif/utils.cpp \
     src/main.cpp \
@@ -15,6 +16,7 @@ SOURCES += \
     src/pixmaplabel.cpp
 
 HEADERS += \
+    src/3rdparty/sigvdr.de/qexifimageheader.h \
     src/exif/file.h \
     src/exif/utils.h \
     src/mainwindow.h \
@@ -27,7 +29,7 @@ FORMS += \
 
 INCLUDEPATH += \
     src \
-    src/3rdparty \
+    src/3rdparty/sigvdr.de \
 
 RESOURCES += \
     rsc/resources.qrc

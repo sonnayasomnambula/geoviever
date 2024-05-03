@@ -63,6 +63,7 @@ public slots:
 public:
     // TODO return QSharedPointer<Photo>
     static bool load(Photo* photo, const QString& file);
+    static bool load_q(Photo* photo, const QString& file);
 };
 
 class ExifStorage : public QObject

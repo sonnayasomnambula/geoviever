@@ -13,6 +13,10 @@ class QGeoCoordinate;
 class QPixmap;
 class QString;
 
+typedef QPair<quint32, quint32> QExifURational;
+
+QVector<QExifURational> qDMS(double degrees, unsigned precision = 10000);
+
 
 namespace Exif {
 

@@ -4,6 +4,8 @@
 #include <QGeoCoordinate>
 #include <QString>
 
+#include <QExifImageHeader>
+
 #include <cmath>
 #include <string>
 
@@ -25,6 +27,14 @@ QVector<ExifRational> Exif::Utils::toDMS(double degrees, unsigned precision)
     quint32 m = static_cast<quint32>(degrees * 60) % 60;
     quint32 s = static_cast<quint32>(std::round(degrees * 60 * 60 * precision)) % (60 * precision);
     return { { d, 1 }, { m, 1 }, { s, precision } };
+}
+
+QVector<QExifURational> qDMS(double degrees, unsigned int precision)
+{
+    quint32 d = degrees;
+    quint32 m = static_cast<quint32>(degrees * 60) % 60;
+    quint32 s = static_cast<quint32>(std::round(degrees * 60 * 60 * precision)) % (60 * precision);
+    return { QPair<quint32, quint32>{ d, 1 }, QPair<quint32, quint32>{ m, 1 }, QPair<quint32, quint32>{ s, (quint32)precision } };
 }
 
 
