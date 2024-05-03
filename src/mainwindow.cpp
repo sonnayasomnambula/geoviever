@@ -62,8 +62,7 @@ MainWindow::MainWindow(QWidget *parent)
     ui->setupUi(this);
     ui->tree->setItemDelegateForColumn(FileTreeModel::COLUMN_COORDS, new GeoCoordinateDelegate(this));
     ui->tree->setModel(mTreeModel);
-    connect(ui->tree->selectionModel(), &QItemSelectionModel::currentRowChanged, this, [this]{
-        auto idx = ui->tree->currentIndex();
+    connect(ui->tree->selectionModel(), &QItemSelectionModel::currentRowChanged, this, [this](const QModelIndex& idx){
         if (mTreeModel->isDir(idx))
         {
             ui->picture->setPath("");
@@ -86,9 +85,11 @@ MainWindow::MainWindow(QWidget *parent)
         QImageReader reader(path);
         ui->picture->setPixmap(Pics::fromImageReader(&reader, photo.orientation));
 
-        QModelIndex index = mMapModel->index(path);
-        if (index.isValid())
-            mMapModel->setCurrentRow(index.row()); // <1>
+        if (idx.isValid())
+        {
+            QModelIndex index = mMapModel->index(path);
+            mMapModel->setCurrentRow(index.row());
+        }
     });
     connect(ui->map, &QQuickWidget::statusChanged, [this](QQuickWidget::Status status){
         if (status == QQuickWidget::Status::Error) {
@@ -109,7 +110,7 @@ MainWindow::MainWindow(QWidget *parent)
         QModelIndex index = mMapModel->index(row, 0);
         if (index.isValid()) {
             auto files = mMapModel->data(index, MapPhotoListModel::Role::Files).toStringList();
-            selectPicture(files.size() == 1 ? files.first() : ""); // <1>
+            selectPicture(files.isEmpty() ? "" : files.first());
         }
     });
 
@@ -373,8 +374,15 @@ void MainWindow::showTooltip(const QPoint& pos)
     {
         widget = new ToolTip(this);
         connect(widget->selectionModel(), &QItemSelectionModel::currentChanged, this, [this](const QModelIndex& index){
-            QSignalBlocker lock(mMapModel); // fix preview disappears the first time you click on the tooltip, see <1>
             selectPicture(widget->model()->data(index, ToolTip::FilePathRole).toString());
+        });
+        connect(widget, &ToolTip::doubleClicked, this, [this](const QModelIndex& index){
+            QString path = widget->model()->data(index, ToolTip::FilePathRole).toString();
+            Photo photo;
+            if (ExifStorage::fillData(path, &photo)) {
+                mMapModel->setZoom(18);
+                mMapModel->setCenter(QGeoCoordinate(photo.position.x(), photo.position.y()));
+            }
         });
     }
 

@@ -116,7 +116,6 @@ bool ExifReader::load(Photo* photo, const QString& file)
 
     return true;
 }
-}
 
 ExifStorage::ExifStorage()
 {

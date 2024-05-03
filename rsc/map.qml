@@ -16,8 +16,39 @@ Rectangle {
             id: centerAnimation;
             target: map;
             properties: "center";
-            duration: 300
+            duration: 1200
             easing.type: Easing.InOutQuad
+        }
+
+        PropertyAnimation {
+            id: zoomAnimation;
+            target: map;
+            properties: "zoomLevel"
+            duration: 1200
+            easing.type: Easing.InOutQuad
+        }
+
+        Connections {
+            target: controller
+            function onCenterChanged() {
+                // console.log("onCenterChanged...", map.center.latitude, map.center.longitude, "==>", controller.center.latitude, controller.center.longitude)
+                if (Math.abs(controller.center.latitude - map.center.latitude) > Number.EPSILON &&
+                    Math.abs(controller.center.longitude - map.center.longitude) > Number.EPSILON) {
+                    centerAnimation.from = map.center
+                    centerAnimation.to = controller.center
+                    centerAnimation.start()
+                    // console.log("onCenterChanged", controller.center.latitude, controller.center.longitude)
+                    // map.center = controller.center
+                }
+            }
+            function onZoomChanged() {
+                if (Math.abs(controller.zoom - map.zoomLevel) > Number.EPSILON) {
+                    // map.zoomLevel = controller.zoom
+                    zoomAnimation.from = map.zoomLevel
+                    zoomAnimation.to = controller.zoom
+                    zoomAnimation.start()
+                }
+            }
         }
 
         MapItemView {
@@ -48,15 +79,8 @@ Rectangle {
                         hoverEnabled: true
 
                         onClicked: controller.currentRow = _index_;
-
-
-                        onEntered: {
-                            controller.hoveredRow = _index_;
-                        }
-
-                        onExited: {
-                            controller.hoveredRow = -1;
-                        }
+                        onEntered: controller.hoveredRow = _index_;
+                        onExited: controller.hoveredRow = -1;
                     }
                 }
             }
