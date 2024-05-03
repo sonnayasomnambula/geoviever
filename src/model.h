@@ -130,6 +130,7 @@ class MapPhotoListModel : public QAbstractListModel
     Q_PROPERTY(QGeoCoordinate center MEMBER mCenter WRITE setCenter NOTIFY centerChanged)
     Q_PROPERTY(int currentRow MEMBER mCurrentRow WRITE setCurrentRow NOTIFY currentRowChanged)
     Q_PROPERTY(int hoveredRow MEMBER mHoveredRow WRITE setHoveredRow)
+    Q_PROPERTY(int thumbnailSize MEMBER THUMBNAIL_SIZE CONSTANT)
 
 signals:
     void zoomChanged();
@@ -157,6 +158,8 @@ public:
 
     void setCurrentRow(int row);
     void setHoveredRow(int row);
+
+    static constexpr int THUMBNAIL_SIZE = 32;
 
 private:
     void updateBuckets();

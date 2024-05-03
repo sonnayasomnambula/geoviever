@@ -110,7 +110,7 @@ QSharedPointer<Photo> ExifReader::load(const QString &file)
 
     photo->orientation = exif.orientation();
 
-    QPixmap pix = exif.thumbnail(32, 32); // TODO magic constant
+    QPixmap pix = exif.thumbnail(MapPhotoListModel::THUMBNAIL_SIZE, MapPhotoListModel::THUMBNAIL_SIZE);
     if (!pix.isNull())
         photo->pixmap = Pics::toBase64(pix, "JPEG");
 
@@ -285,7 +285,7 @@ const QStringList FileTreeModel::entryList(const QString &dir, const QStringList
 }
 
 // QML-used objects must be destoyed after QML engine so don't pass parent here
-MapPhotoListModel::MapPhotoListModel() : mBuckets(this), mBubbles(32, Qt::darkBlue)
+MapPhotoListModel::MapPhotoListModel() : mBuckets(this), mBubbles(THUMBNAIL_SIZE, Qt::darkBlue)
 {
     connect(this, &MapPhotoListModel::zoomChanged, this, &MapPhotoListModel::updateBuckets);
 }

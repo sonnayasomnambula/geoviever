@@ -204,7 +204,7 @@ class ToolTip : public QTableView
                 return mData[internalIndex];
 
             if (role == Qt::SizeHintRole)
-                return QSize(32+4, 32+4); // TODO magic constant
+                return QSize(MapPhotoListModel::THUMBNAIL_SIZE + 4, MapPhotoListModel::THUMBNAIL_SIZE + 4);
 
             return {};
         }
