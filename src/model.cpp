@@ -390,6 +390,11 @@ void MapPhotoListModel::setCenter(const QGeoCoordinate& center)
     }
 }
 
+void MapPhotoListModel::setCenter(const QPointF& center)
+{
+    setCenter(QGeoCoordinate(center.x(), center.y()));
+}
+
 QModelIndex MapPhotoListModel::index(const QString& path)
 {
     for (int row = 0; row < mBuckets.size(); ++row)

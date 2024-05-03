@@ -155,6 +155,7 @@ public:
 
     void setZoom(qreal zoom);
     void setCenter(const QGeoCoordinate& center);
+    void setCenter(const QPointF& center);
 
     using QAbstractListModel::index;
     QModelIndex index(const QString& path);

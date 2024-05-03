@@ -383,7 +383,7 @@ void MainWindow::showTooltip(const QPoint& pos)
             QString path = widget->model()->data(index, ToolTip::FilePathRole).toString();
             if (auto photo = ExifStorage::data(path)) {
                 mMapModel->setZoom(18);
-                mMapModel->setCenter(QGeoCoordinate(photo->position.x(), photo->position.y()));
+                mMapModel->setCenter(photo->position);
             }
         });
     }
@@ -449,4 +449,14 @@ void MainWindow::on_filter_textChanged(const QString& text)
 {
     mTreeModel->setNameFilters(text.split(";"));
     mTreeModel->setNameFilterDisables(false);
+}
+
+void MainWindow::on_tree_doubleClicked(const QModelIndex& index)
+{
+    auto coords = index.siblingAtColumn(FileTreeModel::COLUMN_COORDS).data().toPointF();
+    if (!coords.isNull())
+    {
+        mMapModel->setZoom(18);
+        mMapModel->setCenter(coords);
+    }
 }
