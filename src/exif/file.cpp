@@ -105,7 +105,7 @@ bool File::load(const QString& fileName, bool createIfEmpty)
     std::wstring ws = mFileName.toStdWString();
     const wchar_t* path = ws.c_str();
 
-    // here some copy-paste from exif-data.c modified to support wchar_t
+    // some copy-paste from exif-data.c modified to support wchar_t
 
     {
         // exif_data_new_from_file
@@ -214,7 +214,7 @@ bool File::save(const QString& fileName)
     std::wstring ws = fileName.toStdWString();
     const wchar_t* path = ws.data();
 
-    // here some copy-paste from jpeg-data.c modified to support wchar_t
+    // some copy-paste from jpeg-data.c modified to support wchar_t
 
     {
         // jpeg_data_load_file

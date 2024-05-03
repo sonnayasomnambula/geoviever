@@ -1,13 +1,14 @@
 #ifndef MODEL_H
 #define MODEL_H
 
-#include <QGeoCoordinate>
 #include <QFileSystemModel>
+#include <QGeoCoordinate>
 #include <QMap>
 #include <QMutex>
 #include <QPersistentModelIndex>
 #include <QSharedPointer>
 #include <QSortFilterProxyModel>
+#include <QSet>
 #include <QThread>
 #include <QVector>
 
@@ -58,12 +59,13 @@ class ExifReader : public QObject
 
 signals:
     void ready(const QSharedPointer<Photo>& photo);
+    void failed(const QString& path);
 
 public slots:
-    void parse(const QString& file);
+    void parse(const QString& path);
 
 public:
-    static QSharedPointer<Photo> load(const QString& file);
+    static QSharedPointer<Photo> load(const QString& path);
 };
 
 class ExifStorage : public QObject
@@ -73,6 +75,7 @@ class ExifStorage : public QObject
 signals:
     void parse(const QString& file);
     void ready(const QSharedPointer<Photo>& photo);
+    void remains(int count);
 
 public:
     static ExifStorage* instance();
@@ -84,14 +87,14 @@ public:
 private:
     ExifStorage();
     void add(const QSharedPointer<Photo>& photo);
-    static Photo dummy(const QString& path);
+    void fail(const QString& path);
 
     static ExifStorage init();
 
     QThread mThread;
     mutable QMutex mMutex;
     QMap<QString, QSharedPointer<Photo>> mData;
-    QStringList mInProgress;
+    QSet<QString> mInProgress;
 };
 
 class FileTreeModel : public QFileSystemModel, public Checker

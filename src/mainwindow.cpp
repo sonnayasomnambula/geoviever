@@ -4,8 +4,8 @@
 #include <QFileDialog>
 #include <QFileSystemModel>
 #include <QGeoCoordinate>
-#include <QKeyEvent>
 #include <QImageReader>
+#include <QKeyEvent>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQmlError>
@@ -103,6 +103,13 @@ MainWindow::MainWindow(QWidget *parent)
     connect(mTreeModel, &FileTreeModel::inserted, mMapModel, &MapPhotoListModel::insert);
     connect(mTreeModel, &FileTreeModel::removed, mMapModel, &MapPhotoListModel::remove);
     connect(ExifStorage::instance(), &ExifStorage::ready, mMapModel, &MapPhotoListModel::update);
+    connect(ExifStorage::instance(), &ExifStorage::remains, this, [this](int count){
+        static QElapsedTimer timer;
+        if (count && timer.isValid() && timer.elapsed() < 500)
+            return;
+        statusBar()->showMessage(count ? QString::number(count) : tr("Ready"), count ? 500 : 5000);
+        timer.restart();
+    });
 
     connect(mMapModel, &MapPhotoListModel::currentRowChanged, this, [this](int row){
         QModelIndex index = mMapModel->index(row, 0);

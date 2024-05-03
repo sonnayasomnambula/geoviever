@@ -80,22 +80,24 @@ void Checker::updateChildrenCheckState(const QModelIndex &index)
     }
 }
 
-void ExifReader::parse(const QString& file)
+void ExifReader::parse(const QString& path)
 {
     if (!sender()) return; // disconnected
 
-    if (auto photo = load(file))
+    if (auto photo = load(path))
         emit ready(photo);
+    else
+        emit failed(path);
 }
 
-QSharedPointer<Photo> ExifReader::load(const QString &file)
+QSharedPointer<Photo> ExifReader::load(const QString& path)
 {
     Exif::File exif;
-    if (!exif.load(QDir::toNativeSeparators(file), false))
+    if (!exif.load(QDir::toNativeSeparators(path), false))
         return {}; // no EXIF here
 
     auto photo = QSharedPointer<Photo>::create();
-    photo->path = file;
+    photo->path = path;
 
     auto lat = exif.uRationalVector(EXIF_IFD_GPS, Exif::Tag::GPS::LATITUDE);
     auto lon = exif.uRationalVector(EXIF_IFD_GPS, Exif::Tag::GPS::LONGITUDE);
@@ -124,22 +126,36 @@ ExifStorage::ExifStorage()
     connect(&mThread, &QThread::finished, reader, &QObject::deleteLater);
     connect(this, &ExifStorage::parse, reader, &ExifReader::parse);
     connect(reader, &ExifReader::ready, this, &ExifStorage::add);
+    connect(reader, &ExifReader::failed, this, &ExifStorage::fail);
     mThread.start();
 }
 
 void ExifStorage::add(const QSharedPointer<Photo>& photo)
 {
+    int rest = 0;
+
     {
         QMutexLocker lock(&mMutex);
         mData[photo->path] = photo;
+        mInProgress.remove(photo->path);
+        rest = mInProgress.size();
     }
 
     emit ready(photo);
+    emit remains(rest);
 }
 
-Photo ExifStorage::dummy(const QString& path)
+void ExifStorage::fail(const QString& path)
 {
-    return { path, {}, Exif::Orientation::Unknown, {} };
+    int rest = 0;
+
+    {
+        QMutexLocker lock(&mMutex);
+        mInProgress.remove(path);
+        rest = mInProgress.size();
+    }
+
+    emit remains(rest);
 }
 
 ExifStorage ExifStorage::init()
@@ -173,7 +189,7 @@ QSharedPointer<Photo> ExifStorage::data(const QString& path)
 
     if (!storage->mInProgress.contains(path))
     {
-        storage->mInProgress.append(path);
+        storage->mInProgress.insert(path);
         emit storage->parse(path);
     }
 
@@ -190,7 +206,7 @@ QPointF ExifStorage::coords(const QString& path)
 
     if (!storage->mInProgress.contains(path))
     {
-        storage->mInProgress.append(path);
+        storage->mInProgress.insert(path);
         emit storage->parse(path);
     }
 
