@@ -15,16 +15,27 @@ struct _ExifMem;
 
 namespace Exif {
 
-enum class Orientation {
-    Unknown,
-    Normal,
-    MirrorHorizontal,
-    Rotate180,
-    MirrorVertical,
-    MirrorHorizontalAndRotate270CW,
-    Rotate90CW,
-    MirrorHorizontalAndRotate90CW,
-    Rotate270CW
+class Orientation
+{
+    uint16_t mValue;
+
+public:
+    enum Type {
+        Unknown,
+        Normal,
+        MirrorHorizontal,
+        Rotate180,
+        MirrorVertical,
+        MirrorHorizontalAndRotate270CW,
+        Rotate90CW,
+        MirrorHorizontalAndRotate90CW,
+        Rotate270CW
+    };
+
+    Orientation(uint16_t value = Unknown) : mValue(value) {}
+    operator uint16_t() const { return mValue; }
+
+    bool isRotated() const;
 };
 
 /// EXIF tags are stored in several groups called IFDs.
@@ -46,8 +57,6 @@ private:
 
     QString mErrorString;
 
-    static void log(ExifLog* log, ExifLogCode code, const char* domain, const char* format, va_list args, void* self);
-
 public:
     File();
    ~File();
@@ -61,6 +70,7 @@ public:
     void setValue(ExifIfd ifd, ExifTag tag, const QByteArray& ascii);
     QByteArray ascii(ExifIfd ifd, ExifTag tag) const;
 
+    // TODO use QVariant
     uint16_t int16u(ExifIfd ifd, ExifTag tag, uint16_t notset = 0) const;
     uint32_t int32u(ExifIfd ifd, ExifTag tag, uint32_t notset = 0) const;
 
@@ -71,17 +81,10 @@ public:
     int height() const { return mHeight; }
 
     const QString& errorString() const { return mErrorString; }
+
+    friend class FileHelper;
 };
 
 } // namespace Exif
-
-class QImageReader;
-namespace Pics
-{
-
-QPixmap fromImageReader(QImageReader* reader, int width, int height, Exif::Orientation orientation);
-QPixmap fromImageReader(QImageReader* reader, int width, int height);
-
-}
 
 #endif // EXIF_FILE_H

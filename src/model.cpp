@@ -12,38 +12,7 @@
 #include "exif/file.h"
 #include "exif/utils.h"
 #include "model.h"
-
-namespace Pics
-{
-
-QPixmap thumbnail(const QPixmap& pixmap, int size)
-{
-    QPixmap pic = (pixmap.width() > pixmap.height()) ? pixmap.scaledToHeight(size) : pixmap.scaledToWidth(size);
-    return pic.copy((pic.width() - size) / 2, (pic.height() - size) / 2, size, size);
-}
-
-QString toBase64(const QPixmap& pixmap, const char* format)
-{
-    QByteArray raw;
-    QBuffer buff(&raw);
-    buff.open(QIODevice::WriteOnly);
-    pixmap.save(&buff, format);
-
-    QString base64("data:image/jpg;base64,");
-    base64.append(QString::fromLatin1(raw.toBase64().data()));
-    return base64;
-}
-
-QPixmap fromBase64(const QString& base64)
-{
-    static const int dataIndex = QString("data:image/jpg;base64,").size();
-    QByteArray raw = QByteArray::fromBase64(base64.toLatin1().mid(dataIndex));
-    QPixmap pix;
-    pix.loadFromData(raw);
-    return pix;
-}
-
-} // namespace Pics
+#include "pics.h"
 
 bool operator ==(const Photo& L, const Photo& R)
 {
@@ -115,16 +84,18 @@ void ExifReader::parse(const QString& file)
 {
     if (!sender()) return; // disconnected
 
+    Photo photo;
+    if (load(&photo, file))
+        emit ready(photo);
+}
+
+bool ExifReader::load(Photo* photo, const QString& file)
+{
     Exif::File exif;
     if (!exif.load(QDir::toNativeSeparators(file), false))
-    {
-        // no EXIF here
-        qWarning() << "Unable to load EXIF from" << QDir::toNativeSeparators(file);
-        return;
-    }
+        return false; // no EXIF here
 
-    Photo photo;
-    photo.path = file;
+    photo->path = file;
 
     auto lat = exif.uRationalVector(EXIF_IFD_GPS, Exif::Tag::GPS::LATITUDE);
     auto lon = exif.uRationalVector(EXIF_IFD_GPS, Exif::Tag::GPS::LONGITUDE);
@@ -134,16 +105,17 @@ void ExifReader::parse(const QString& file)
     if (!lat.isEmpty() && !lon.isEmpty())
     {
         QGeoCoordinate coords = Exif::Utils::fromLatLon(lat, latRef, lon, lonRef);
-        photo.position = { coords.latitude(), coords.longitude() };
+        photo->position = { coords.latitude(), coords.longitude() };
     }
 
-    photo.orientation = exif.orientation();
+    photo->orientation = exif.orientation();
 
     QPixmap pix = exif.thumbnail(32, 32); // TODO magic constant
     if (!pix.isNull())
-        photo.pixmap = Pics::toBase64(pix, "JPEG");
+        photo->pixmap = Pics::toBase64(pix, "JPEG");
 
-    emit ready(photo);
+    return true;
+}
 }
 
 ExifStorage::ExifStorage()
@@ -292,12 +264,17 @@ bool FileTreeModel::setCheckState(const QModelIndex& index, const QVariant& valu
 
 QStringList FileTreeModel::entryList(const QString& dir) const
 {
+    return entryList(dir, nameFilters());
+}
+
+const QStringList FileTreeModel::entryList(const QString &dir, const QStringList& nameFilters)
+{
     if (QFileInfo(dir).isFile())
         return { dir };
 
     QDir directory(dir);
 
-    auto files = directory.entryList(nameFilters(), QDir::Files, QDir::Name);
+    auto files = directory.entryList(nameFilters, QDir::Files, QDir::Name);
     auto subdirs = directory.entryList({}, QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
 
     QStringList all;
@@ -306,7 +283,7 @@ QStringList FileTreeModel::entryList(const QString& dir) const
         all.append(directory.absoluteFilePath(file));
 
     for (const auto& subdir: subdirs)
-        all.append(entryList(directory.absoluteFilePath(subdir)));
+        all.append(entryList(directory.absoluteFilePath(subdir), nameFilters));
 
     return all;
 }

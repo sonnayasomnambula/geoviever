@@ -25,16 +25,6 @@ bool operator ==(const Photo& L, const Photo& R);
 bool operator !=(const Photo& L, const Photo& R);
 
 
-namespace Pics
-{
-
-QPixmap thumbnail(const QPixmap& pixmap, int size);
-QString toBase64(const QPixmap& pixmap, const char* format);
-QPixmap fromBase64(const QString& base64);
-
-} // namespace Pics
-
-
 class Bubbles
 {
     QHash<int, QString> mData;
@@ -69,6 +59,10 @@ signals:
 
 public slots:
     void parse(const QString& file);
+
+public:
+    // TODO return QSharedPointer<Photo>
+    static bool load(Photo* photo, const QString& file);
 };
 
 class ExifStorage : public QObject
@@ -117,6 +111,8 @@ public:
     bool setData(const QModelIndex& index, const QVariant& value, int role) override;
     QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
 
+    static const QStringList entryList(const QString& dir, const QStringList& nameFilters);
+
 private:
     using Super = QFileSystemModel;
 
@@ -128,6 +124,7 @@ class MapPhotoListModel : public QAbstractListModel
 {
     Q_OBJECT
 
+    // TODO extract zoom & center to avoid qml -> cpp -> qml signal loop
     Q_PROPERTY(qreal zoom MEMBER mZoom WRITE setZoom NOTIFY zoomChanged)
     Q_PROPERTY(QGeoCoordinate center MEMBER mCenter WRITE setCenter NOTIFY centerChanged)
     Q_PROPERTY(int currentRow MEMBER mCurrentRow WRITE setCurrentRow NOTIFY currentRowChanged)

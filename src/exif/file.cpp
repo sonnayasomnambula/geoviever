@@ -14,26 +14,72 @@
 
 #include "exif/file.h"
 
-void Exif::File::log(ExifLog* /*log*/, ExifLogCode code, const char* domain, const char* format, va_list args, void* self)
+#include "pics.h"
+
+namespace Exif
 {
-    constexpr size_t size = 512;
-    char buffer[size];
-    vsnprintf(buffer, size, format, args);
 
-    QString& message = reinterpret_cast<Exif::File*>(self)->mErrorString;
-    message = QString("[%1] %2").arg(domain).arg(buffer);
+bool Orientation::isRotated() const
+{
+    switch (mValue) {
+    case MirrorHorizontalAndRotate270CW:
+    case Rotate90CW:
+    case MirrorHorizontalAndRotate90CW:
+    case Rotate270CW:
+        return true;
+    }
 
-    (code == EXIF_LOG_CODE_DEBUG ? qDebug() : qWarning()).noquote() << message;
+    return false;
 }
 
-Exif::File::File()
+class FileHelper
+{
+public:
+    static void log(ExifLog* /*log*/, ExifLogCode code, const char* domain, const char* format, va_list args, void* self)
+    {
+        constexpr size_t size = 512;
+        char buffer[size];
+        vsnprintf(buffer, size, format, args);
+
+        QString& message = reinterpret_cast<File*>(self)->mErrorString;
+        message = QString("[%1] %2").arg(domain).arg(buffer);
+
+        (code == EXIF_LOG_CODE_DEBUG ? qDebug() : qWarning()).noquote() << message;
+    }
+
+    template <typename T>
+    static T getter(const unsigned char* buf, ExifByteOrder order);
+
+    template <typename T>
+    static T extract(ExifData* data, ExifIfd ifd, ExifTag tag, ExifByteOrder order, const T notset)
+    {
+        if (auto content = data ? data->ifd[ifd] : nullptr)
+            if (auto entry = exif_content_get_entry(content, tag))
+                if (entry->components == 1 && entry->size == sizeof(notset)) // TODO you must check entry->format
+                    return getter<T>(entry->data, order);
+        return notset;
+    }
+};
+
+template <>
+ExifShort FileHelper::getter(const unsigned char* buf, ExifByteOrder order) {
+    return exif_get_short(buf, order);
+}
+
+template <>
+ExifLong FileHelper::getter(const unsigned char* buf, ExifByteOrder order) {
+    return exif_get_long(buf, order);
+}
+
+
+File::File()
 {
     mAllocator = exif_mem_new_default();
     if ((mLog = exif_log_new_mem(mAllocator)))
-        exif_log_set_func(mLog, &File::log, this);
+        exif_log_set_func(mLog, &FileHelper::log, this);
 }
 
-Exif::File::~File()
+File::~File()
 {
     exif_log_unref(mLog);
     exif_mem_unref(mAllocator);
@@ -52,7 +98,7 @@ static inline bool read_big_endian(uint16_t* value, FILE* file) {
 
 /// \brief load all EXIF tags from \a fileName;
 /// creates an empty storage if there are no tags in the file
-bool Exif::File::load(const QString& fileName, bool createIfEmpty)
+bool File::load(const QString& fileName, bool createIfEmpty)
 {
     mFileName = fileName;
 
@@ -138,6 +184,9 @@ bool Exif::File::load(const QString& fileName, bool createIfEmpty)
         exif_loader_unref (loader);
 
         mExifData = edata;
+
+        if (orientation().isRotated())
+            std::swap(mWidth, mHeight);
     }
 
     if (!mExifData)
@@ -147,16 +196,15 @@ bool Exif::File::load(const QString& fileName, bool createIfEmpty)
 
         mExifData = exif_data_new();
         exif_data_fix(mExifData);
+        exif_data_set_option(mExifData, EXIF_DATA_OPTION_FOLLOW_SPECIFICATION);
+        exif_data_set_data_type(mExifData, EXIF_DATA_TYPE_COMPRESSED);
+        exif_data_set_byte_order(mExifData, EXIF_BYTE_ORDER_INTEL);
     }
-
-    exif_data_set_option(mExifData, EXIF_DATA_OPTION_FOLLOW_SPECIFICATION);
-    exif_data_set_data_type(mExifData, EXIF_DATA_TYPE_COMPRESSED);
-    exif_data_set_byte_order(mExifData, EXIF_BYTE_ORDER_INTEL);
 
     return mExifData;
 }
 
-bool Exif::File::save(const QString& fileName)
+bool File::save(const QString& fileName)
 {
     JPEGData *data = jpeg_data_new ();
 
@@ -242,7 +290,7 @@ bool Exif::File::save(const QString& fileName)
     }
 }
 
-void Exif::File::setValue(ExifIfd ifd, ExifTag tag, const QVector<ExifRational> urational)
+void File::setValue(ExifIfd ifd, ExifTag tag, const QVector<ExifRational> urational)
 {
     if (!mExifData) return;
 
@@ -282,7 +330,7 @@ void Exif::File::setValue(ExifIfd ifd, ExifTag tag, const QVector<ExifRational> 
     }
 }
 
-QVector<ExifRational> Exif::File::uRationalVector(ExifIfd ifd, ExifTag tag) const
+QVector<ExifRational> File::uRationalVector(ExifIfd ifd, ExifTag tag) const
 {
     QVector<ExifRational> value;
     ExifEntry* entry = mExifData ? exif_content_get_entry(mExifData->ifd[ifd], tag) : nullptr;
@@ -296,7 +344,7 @@ QVector<ExifRational> Exif::File::uRationalVector(ExifIfd ifd, ExifTag tag) cons
 }
 
 
-void Exif::File::setValue(ExifIfd ifd, ExifTag tag, const QByteArray& ascii)
+void File::setValue(ExifIfd ifd, ExifTag tag, const QByteArray& ascii)
 {
     if (!mExifData) return;
 
@@ -336,7 +384,7 @@ void Exif::File::setValue(ExifIfd ifd, ExifTag tag, const QByteArray& ascii)
     exif_entry_unref(entry);
 }
 
-QByteArray Exif::File::ascii(ExifIfd ifd, ExifTag tag) const
+QByteArray File::ascii(ExifIfd ifd, ExifTag tag) const
 {
     ExifEntry* entry = mExifData ? exif_content_get_entry(mExifData->ifd[ifd], tag) : nullptr;
     if (!entry) return {};
@@ -347,92 +395,19 @@ QByteArray Exif::File::ascii(ExifIfd ifd, ExifTag tag) const
     return d;
 }
 
-template <typename T>
-static T extract(ExifEntry* entry, T notset)
+uint16_t File::int16u(ExifIfd ifd, ExifTag tag, uint16_t notset) const
 {
-    T value = notset;
-
-    if (entry && entry->size == sizeof(value))
-        memcpy(&value, entry->data, entry->size);
-
-    return value;
+    return FileHelper::extract(mExifData, ifd, tag, exif_data_get_byte_order(mExifData), notset);
 }
 
-uint16_t Exif::File::int16u(ExifIfd ifd, ExifTag tag, uint16_t notset) const
+uint32_t File::int32u(ExifIfd ifd, ExifTag tag, uint32_t notset) const
 {
-    return mExifData ? extract(exif_content_get_entry(mExifData->ifd[ifd], tag), notset) : notset;
+    return FileHelper::extract(mExifData, ifd, tag, exif_data_get_byte_order(mExifData), notset);
 }
 
-uint32_t Exif::File::int32u(ExifIfd ifd, ExifTag tag, uint32_t notset) const
+QPixmap File::thumbnail(int width, int height) const
 {
-    return mExifData ? extract(exif_content_get_entry(mExifData->ifd[ifd], tag), notset) : notset;
-}
-
-namespace Pics
-{
-
-QPixmap fromImageReader(QImageReader* reader, int width, int height, Exif::Orientation orientation)
-{
-    switch (orientation) {
-    case Exif::Orientation::MirrorHorizontalAndRotate270CW:
-    case Exif::Orientation::Rotate90CW:
-    case Exif::Orientation::MirrorHorizontalAndRotate90CW:
-    case Exif::Orientation::Rotate270CW:
-        std::swap(width, height);
-    }
-
-    QPixmap pic = fromImageReader(reader, width, height);
-
-    QTransform transformation;
-
-    if (orientation == Exif::Orientation::MirrorHorizontal) {
-        transformation.scale(1, -1);
-    } else if (orientation == Exif::Orientation::Rotate180) {
-        transformation.rotate(180);
-    } else if (orientation == Exif::Orientation::MirrorVertical) {
-        transformation.scale(-1, 1);
-    } else if (orientation == Exif::Orientation::MirrorHorizontalAndRotate270CW) {
-        transformation.scale(1, -1);
-        transformation.rotate(270);
-    } else if (orientation == Exif::Orientation::Rotate90CW) {
-        transformation.rotate(90);
-    } else if (orientation == Exif::Orientation::MirrorHorizontalAndRotate90CW) {
-        transformation.scale(1, -1);
-        transformation.rotate(90);
-    } else if (orientation == Exif::Orientation::Rotate270CW) {
-        transformation.rotate(270);
-    } else {
-        return pic;
-    }
-
-    return pic.transformed(transformation);
-}
-
-QPixmap fromImageReader(QImageReader *reader, int width, int height)
-{
-    if (width == 0 || height == 0)
-        return QPixmap::fromImageReader(reader);
-
-    QSize size = reader->size();
-
-    double dw = 1.0 * width / size.width();
-    double dh = 1.0 * height / size.height();
-    QSize cropped_size = size * std::max(dw, dh);
-    reader->setScaledSize(cropped_size);
-    reader->setScaledClipRect(QRect((cropped_size.width() - width) / 2,
-                                    (cropped_size.height() - height) / 2,
-                                    width,
-                                    height));
-    return QPixmap::fromImageReader(reader);
-}
-
-}
-
-QPixmap Exif::File::thumbnail(int width, int height) const
-{
-    // TODO load JPEG marker
-
-    Orientation orientation = this->orientation();
+    Orientation orientation = int16u(EXIF_IFD_1, EXIF_TAG_ORIENTATION, Orientation::Unknown);
 
     if (mExifData && mExifData->data && mExifData->size)
     {
@@ -442,7 +417,7 @@ QPixmap Exif::File::thumbnail(int width, int height) const
 
         // fix non-rotated EXIF thumbnail
         QSize size = reader.size();
-        if (size.isValid() && orientation == Orientation::Normal && ((width > height) != (size.width() > size.height())))
+        if (orientation == Orientation::Unknown && ((mWidth > mHeight) != (size.width() > size.height())))
         {
             std::swap(width, height);
             orientation = Orientation::Rotate270CW;
@@ -460,7 +435,9 @@ QPixmap Exif::File::thumbnail(int width, int height) const
     return {};
 }
 
-Exif::Orientation Exif::File::orientation() const
+Orientation File::orientation() const
 {
     return static_cast<Orientation>(int16u(EXIF_IFD_0, EXIF_TAG_ORIENTATION, static_cast<uint16_t>(Orientation::Unknown)));
 }
+
+} // namespace Exif

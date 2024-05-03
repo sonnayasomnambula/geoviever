@@ -11,6 +11,7 @@ SOURCES += \
     src/main.cpp \
     src/mainwindow.cpp \
     src/model.cpp \
+    src/pics.cpp \
     src/pixmaplabel.cpp
 
 HEADERS += \
@@ -18,6 +19,7 @@ HEADERS += \
     src/exif/utils.h \
     src/mainwindow.h \
     src/model.h \
+    src/pics.h \
     src/pixmaplabel.h
 
 FORMS += \

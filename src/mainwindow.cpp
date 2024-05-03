@@ -22,6 +22,7 @@
 #include "abstractsettings.h"
 #include "model.h"
 #include "mainwindow.h"
+#include "pics.h"
 #include "ui_mainwindow.h"
 
 struct Settings : AbstractSettings
@@ -83,7 +84,7 @@ MainWindow::MainWindow(QWidget *parent)
         }
 
         QImageReader reader(path);
-        ui->picture->setPixmap(Pics::fromImageReader(&reader, 0, 0, photo.orientation));
+        ui->picture->setPixmap(Pics::fromImageReader(&reader, photo.orientation));
 
         QModelIndex index = mMapModel->index(path);
         if (index.isValid())
@@ -398,9 +399,23 @@ void MainWindow::selectPicture(const QString& path)
 
     auto i = mTreeModel->index(path);
     if (i.isValid())
+    {
         ui->tree->setCurrentIndex(i);
-    else
-        ui->picture->setPath(path);
+        return;
+    }
+
+    ui->picture->setPath(path);
+
+    Photo photo;
+    if (!ExifStorage::fillData(path, &photo))
+    {
+        Exif::File exif;
+        exif.load(path, false);
+        photo.orientation = exif.orientation();
+    }
+
+    QImageReader reader(path);
+    ui->picture->setPixmap(Pics::fromImageReader(&reader, photo.orientation));
 }
 
 void MainWindow::on_pickRoot_clicked()
