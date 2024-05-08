@@ -571,13 +571,12 @@ QVariant File::value(ExifIfd ifd, ExifTag tag) const
 
 QPixmap File::thumbnail(int width, int height) const
 {
-    Orientation orientation = value(EXIF_IFD_1, EXIF_TAG_ORIENTATION).toInt();
-
     if (mExifData && mExifData->data && mExifData->size)
     {
         QByteArray data = QByteArray::fromRawData(reinterpret_cast<const char*>(mExifData->data), mExifData->size); // not copied
         QBuffer buffer(&data);
         QImageReader reader(&buffer);
+        Orientation orientation = value(EXIF_IFD_1, EXIF_TAG_ORIENTATION).toInt();
 
         // fix non-rotated EXIF thumbnail
         QSize size = reader.size();
@@ -593,6 +592,16 @@ QPixmap File::thumbnail(int width, int height) const
     if (!mFileName.isEmpty())
     {
         QImageReader reader(mFileName);
+        Orientation orientation = value(EXIF_IFD_0, EXIF_TAG_ORIENTATION).toInt();
+
+        // fix non-rotated image
+        QSize size = reader.size();
+        if (orientation == Orientation::Unknown && ((mWidth > mHeight) != (size.width() > size.height())))
+        {
+            std::swap(width, height);
+            orientation = Orientation::Rotate270CW;
+        }
+
         return Pics::fromImageReader(&reader, width, height, orientation);
     }
 
