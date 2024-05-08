@@ -2,6 +2,7 @@
 #define EXIF_UTILS_H
 
 
+#include <QVariant>
 #include <QVector>
 #include <QPair>
 
@@ -30,6 +31,13 @@ static const ExifTag ALTITUDE_REF  = static_cast<ExifTag>(EXIF_TAG_GPS_ALTITUDE_
 
 
 namespace Utils {
+/// used in ALTITUDE_REF tag
+enum class SeaLevel
+{
+    Above = 0,
+    Below = 1
+};
+
 
 QVector<ExifRational> toDMS(double degrees, unsigned precision = 10000);
 QVector<ExifRational> toSingleRational(double value, unsigned precision = 1000);
@@ -40,6 +48,8 @@ QByteArray toAltitudeRef(double alt);
 QGeoCoordinate fromLatLon(const QVector<ExifRational>& lat, const QByteArray& latRef,
                           const QVector<ExifRational>& lon, const QByteArray& lonRef);
 double fromSingleRational(const QVector<ExifRational>& rational, const QByteArray& ref);
+QPointF fromLatLon(const QVariantList& latVal, const QByteArray& latRef,
+                   const QVariantList& lonVal, const QByteArray& lonRef);
 
 } // namespace Utils
 

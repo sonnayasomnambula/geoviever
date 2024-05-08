@@ -47,29 +47,180 @@ public:
         (code == EXIF_LOG_CODE_DEBUG ? qDebug() : qWarning()).noquote() << message;
     }
 
-    template <typename T>
-    static T getter(const unsigned char* buf, ExifByteOrder order);
+    static void warning(ExifEntry* e, const char* message)
+    {
+        qWarning("Tag 0x%04X '%s': %s",
+                 e->tag,
+                 e->parent && e->parent->parent ?
+                                exif_tag_get_name_in_ifd(e->tag, (ExifIfd)std::distance(e->parent->parent->ifd,
+                                                                                        std::find(e->parent->parent->ifd, e->parent->parent->ifd + EXIF_IFD_COUNT, e->parent))) :
+                                exif_tag_get_name(e->tag),
+                 message);
+    }
+
+    template <class T>
+    static T trimTrailingNull(T&& value)
+    {
+        while (value.endsWith('\0'))
+            value.resize(value.size() - 1);
+        return std::move(value);
+    }
 
     template <typename T>
-    static T extract(ExifData* data, ExifIfd ifd, ExifTag tag, ExifByteOrder order, const T notset)
+    static T integer(const unsigned char* buf, ExifByteOrder order) {
+        static_assert(std::is_integral<T>::value, "T must be integral type");
+        T value = 0;
+        if (buf)
+        {
+            switch (order) {
+            case EXIF_BYTE_ORDER_MOTOROLA:
+                for (size_t i = 0; i < sizeof(T); ++i) {
+                    value <<= 8;
+                    value |= static_cast<T>(buf[i]);
+                }
+                break;
+            case EXIF_BYTE_ORDER_INTEL:
+                for (size_t i = sizeof(T); i > 0; --i) {
+                    value <<= 8;
+                    value |= static_cast<T>(buf[i-1]);
+                }
+                break;
+            }
+        }
+        return value;
+    }
+
+    template <typename T>
+    static double rational(const unsigned char* buf, ExifByteOrder order) {
+        T numerator   = buf ? integer<T>(buf, order) : 0;
+        T denominator = buf ? integer<T>(buf + 4, order) : 0;
+        return denominator ? (double)numerator / (double)denominator : (double)numerator;
+    }
+
+    template <typename T>
+    static QVariant decodeInteger(ExifEntry* e, ExifByteOrder o)
     {
-        if (auto content = data ? data->ifd[ifd] : nullptr)
-            if (auto entry = exif_content_get_entry(content, tag))
-                if (entry->components == 1 && entry->size == sizeof(notset)) // TODO you must check entry->format
-                    return getter<T>(entry->data, order);
-        return notset;
+        if (e->components == 1)
+            return integer<T>(e->data, o);
+
+        QVariantList list;
+        list.reserve(e->components);
+        for (size_t i = 0; i < e->components; i++) {
+            list.append(integer<T> (e->data + exif_format_get_size (e->format) * i, o));
+        }
+        return list;
+    }
+
+    template <typename T>
+    static QVariant decodeRational(ExifEntry* e, ExifByteOrder o)
+    {
+        if (e->components == 1)
+            return rational<T>(e->data, o);
+
+        QVariantList list;
+        list.reserve(e->components);
+        for (size_t i = 0; i < e->components; i++) {
+            list.append(rational<T>(e->data + exif_format_get_size (e->format) * i, o));
+        }
+        return list;
+    }
+
+    static QVariant decodeAscii(ExifEntry* e)
+    {
+        return trimTrailingNull(QByteArray((const char*)e->data, e->size));
+    }
+
+    static QVariant decodeRaw(ExifEntry* e)
+    {
+        if (e->components == 1 && e->size == 1)
+            return e->data[0];
+
+        if ((e->size >= 8) && !memcmp (e->data, "ASCII\0\0\0", 8))
+            return trimTrailingNull(QString::fromLatin1((const char *) e->data + 8, e->size - 8));
+
+        if ((e->size >= 8) && !memcmp (e->data, "UNICODE\0", 8))
+            return trimTrailingNull(QString::fromUtf8((const char *) e->data + 8, e->size - 8));
+
+        if ((e->size >= 8) && !memcmp (e->data, "JIS\0\0\0\0\0", 8))
+        {
+            warning(e, "JIS strings are not supported");
+            return {};
+        }
+
+        return QByteArray((const char*)e->data, e->size);
+    }
+
+    static QVariant decodeDefault(ExifEntry* e)
+    {
+        if (!e->size) return {};
+
+        if (!e || !e->parent || !e->parent->parent) return {};
+        auto o = exif_data_get_byte_order(e->parent->parent);
+
+        switch (e->format) {
+        case EXIF_FORMAT_UNDEFINED:
+        case EXIF_FORMAT_BYTE:
+        case EXIF_FORMAT_SBYTE:
+            return decodeRaw(e);
+        case EXIF_FORMAT_SHORT:
+            return decodeInteger<ExifShort>(e, o);
+        case EXIF_FORMAT_SSHORT:
+            return decodeInteger<ExifSShort>(e, o);
+        case EXIF_FORMAT_LONG:
+            return decodeInteger<ExifLong>(e, o);
+        case EXIF_FORMAT_SLONG:
+            return decodeInteger<ExifSLong>(e, o);
+        case EXIF_FORMAT_ASCII:
+            return decodeAscii(e);
+        case EXIF_FORMAT_RATIONAL:
+            return decodeRational<ExifLong>(e, o);
+        case EXIF_FORMAT_SRATIONAL:
+            return decodeRational<ExifSLong>(e, o);
+        case EXIF_FORMAT_DOUBLE:
+        case EXIF_FORMAT_FLOAT:
+            break; // TODO libexif does not support EXIF_FORMAT_DOUBLE and EXIF_FORMAT_FLOAT, but...
+        }
+
+        warning(e, "unable to decode");
+        return {};
+    }
+
+    static QVariant decode(ExifEntry* e)
+    {
+        if (e->size != e->components * exif_format_get_size(e->format))
+        {
+            warning(e, "invalid size");
+            return {};
+        }
+
+        if (e->size && !e->data)
+        {
+            warning(e, "no data found");
+            return {};
+        }
+
+        switch (e->tag)
+        {
+        case EXIF_TAG_USER_COMMENT:
+            if (e->format == EXIF_FORMAT_UNDEFINED) return decodeRaw(e); else break; // EXIF_FORMAT_ASCII can be decoded by default
+        case EXIF_TAG_EXIF_VERSION:
+            if (e->components == 4) return decodeRaw(e); else break; // also must be EXIF_FORMAT_UNDEFINED, but FastStone don't care
+        case EXIF_TAG_FLASH_PIX_VERSION:
+        case EXIF_TAG_COMPONENTS_CONFIGURATION:
+            if (e->format == EXIF_FORMAT_UNDEFINED && e->components == 4) return decodeRaw(e); else break;
+        case EXIF_TAG_FILE_SOURCE:
+        case EXIF_TAG_SCENE_TYPE:
+            if (e->format == EXIF_FORMAT_UNDEFINED && e->components == 1) return decodeRaw(e); else break;
+        case EXIF_TAG_INTEROPERABILITY_VERSION:
+            // NB! EXIF_TAG_INTEROPERABILITY_VERSION == EXIF_TAG_GPS_LATITUDE
+            if (e->format == EXIF_FORMAT_UNDEFINED) return decodeRaw(e); else break;
+        default:
+            break; // make GCC happy
+        }
+
+        return decodeDefault(e);
     }
 };
-
-template <>
-ExifShort FileHelper::getter(const unsigned char* buf, ExifByteOrder order) {
-    return exif_get_short(buf, order);
-}
-
-template <>
-ExifLong FileHelper::getter(const unsigned char* buf, ExifByteOrder order) {
-    return exif_get_long(buf, order);
-}
 
 
 File::File()
@@ -395,19 +546,32 @@ QByteArray File::ascii(ExifIfd ifd, ExifTag tag) const
     return d;
 }
 
-uint16_t File::int16u(ExifIfd ifd, ExifTag tag, uint16_t notset) const
+QMap<ExifTag, QVariant> File::values(ExifIfd ifd) const
 {
-    return FileHelper::extract(mExifData, ifd, tag, exif_data_get_byte_order(mExifData), notset);
+    QMap<ExifTag, QVariant> values;
+    if (auto content = this->content(ifd))
+    {
+        // cannot capture anything
+        exif_content_foreach_entry(content, [](ExifEntry* entry, void* user_data){
+                QVariant v = FileHelper::decode(entry);
+                if (!v.isNull())
+                    if (auto valuesPtr = reinterpret_cast<QMap<ExifTag, QVariant>*>(user_data))
+                        (*(valuesPtr))[entry->tag] = v;
+            }, &values);
+    }
+    return values;
 }
 
-uint32_t File::int32u(ExifIfd ifd, ExifTag tag, uint32_t notset) const
+QVariant File::value(ExifIfd ifd, ExifTag tag) const
 {
-    return FileHelper::extract(mExifData, ifd, tag, exif_data_get_byte_order(mExifData), notset);
+    if (auto entry = exif_content_get_entry(content(ifd), tag))
+        return FileHelper::decode(entry);
+    return {};
 }
 
 QPixmap File::thumbnail(int width, int height) const
 {
-    Orientation orientation = int16u(EXIF_IFD_1, EXIF_TAG_ORIENTATION, Orientation::Unknown);
+    Orientation orientation = value(EXIF_IFD_1, EXIF_TAG_ORIENTATION).toInt();
 
     if (mExifData && mExifData->data && mExifData->size)
     {
@@ -435,9 +599,25 @@ QPixmap File::thumbnail(int width, int height) const
     return {};
 }
 
+ExifData* File::data() const
+{
+    return mExifData;
+}
+
+ExifContent *File::content(ExifIfd ifd) const
+{
+    return mExifData ? mExifData->ifd[ifd] : nullptr;
+}
+
+ExifEntry *File::entry(ExifIfd ifd, ExifTag tag) const
+{
+    return exif_content_get_entry(content(ifd), tag);
+}
+
 Orientation File::orientation() const
 {
-    return static_cast<Orientation>(int16u(EXIF_IFD_0, EXIF_TAG_ORIENTATION, static_cast<uint16_t>(Orientation::Unknown)));
+    QVariant val = value(EXIF_IFD_0, EXIF_TAG_ORIENTATION);
+    return val.isNull() ? Orientation::Unknown : val.toInt();
 }
 
 } // namespace Exif

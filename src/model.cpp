@@ -99,16 +99,13 @@ QSharedPointer<Photo> ExifReader::load(const QString& path)
     auto photo = QSharedPointer<Photo>::create();
     photo->path = path;
 
-    auto lat = exif.uRationalVector(EXIF_IFD_GPS, Exif::Tag::GPS::LATITUDE);
-    auto lon = exif.uRationalVector(EXIF_IFD_GPS, Exif::Tag::GPS::LONGITUDE);
-    auto latRef = exif.ascii(EXIF_IFD_GPS, Exif::Tag::GPS::LATITUDE_REF);
-    auto lonRef = exif.ascii(EXIF_IFD_GPS, Exif::Tag::GPS::LONGITUDE_REF);
+    auto latVal = exif.value(EXIF_IFD_GPS, Exif::Tag::GPS::LATITUDE);
+    auto lonVal = exif.value(EXIF_IFD_GPS, Exif::Tag::GPS::LONGITUDE);
+    auto latRef = exif.value(EXIF_IFD_GPS, Exif::Tag::GPS::LATITUDE_REF).toByteArray();
+    auto lonRef = exif.value(EXIF_IFD_GPS, Exif::Tag::GPS::LONGITUDE_REF).toByteArray();
 
-    if (!lat.isEmpty() && !lon.isEmpty())
-    {
-        QGeoCoordinate coords = Exif::Utils::fromLatLon(lat, latRef, lon, lonRef);
-        photo->position = { coords.latitude(), coords.longitude() };
-    }
+    if (!latVal.isNull() && !lonVal.isNull())
+        photo->position = Exif::Utils::fromLatLon(latVal.toList(), latRef, lonVal.toList(), lonRef);
 
     photo->orientation = exif.orientation();
 

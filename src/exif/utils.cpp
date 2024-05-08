@@ -2,6 +2,7 @@
 
 #include <QDebug>
 #include <QGeoCoordinate>
+#include <QPointF>
 #include <QString>
 
 #include <cmath>
@@ -49,7 +50,8 @@ QByteArray Exif::Utils::toLongitudeRef(double lon)
 
 QByteArray Exif::Utils::toAltitudeRef(double /*alt*/)
 {
-    return ""; // FIXME find out what is returned for the altitude below sea level
+    Q_ASSERT("rewrite, must return Utils::SeaLevel");
+    return ""; // FIXME ALTITUDE_REF is BYTE, not ASCII; see tag description in exif-tag.c
 }
 
 QGeoCoordinate Exif::Utils::fromLatLon(const QVector<ExifRational>& lat, const QByteArray& latRef, const QVector<ExifRational>& lon, const QByteArray& lonRef)
@@ -93,4 +95,22 @@ double Exif::Utils::fromSingleRational(const QVector<ExifRational>& rational, co
         alt = -alt;
 
     return alt;
+}
+
+QPointF Exif::Utils::fromLatLon(const QVariantList &latVal, const QByteArray &latRef, const QVariantList &lonVal, const QByteArray &lonRef)
+{
+    if (latVal.size() != 3 || lonVal.size() != 3) {
+        qWarning() << "Exif: unsupported latlon format" << latVal << latRef << lonVal << lonRef;
+        return {}; // 3
+    }
+
+    double lat = latVal[0].toDouble() + latVal[1].toDouble() / 60 + latVal[2].toDouble() / 60 / 60;
+    double lon = lonVal[0].toDouble() + lonVal[1].toDouble() / 60 + lonVal[2].toDouble() / 60 / 60;
+
+    if (latRef == "S")
+        lat = -lat;
+    if (lonRef == "W")
+        lon = -lon;
+
+    return QPointF(lat, lon);
 }

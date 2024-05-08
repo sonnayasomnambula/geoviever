@@ -7,6 +7,7 @@
 #include <libexif/exif-tag.h>
 #include <libexif/exif-log.h>
 #include <libexif/exif-utils.h>
+#include <libexif/exif-data.h>
 
 typedef struct _ExifData ExifData;
 struct _ExifData;
@@ -71,11 +72,14 @@ public:
     void setValue(ExifIfd ifd, ExifTag tag, const QByteArray& ascii);
     QByteArray ascii(ExifIfd ifd, ExifTag tag) const;
 
-    // TODO use QVariant
-    uint16_t int16u(ExifIfd ifd, ExifTag tag, uint16_t notset = 0) const;
-    uint32_t int32u(ExifIfd ifd, ExifTag tag, uint32_t notset = 0) const;
+    QMap<ExifTag, QVariant> values(ExifIfd ifd) const;
+    QVariant value(ExifIfd ifd, ExifTag tag) const;
 
     QPixmap thumbnail(int width = 0, int height = 0) const;
+
+    ExifData* data() const;
+    ExifContent* content(ExifIfd ifd) const;
+    ExifEntry* entry(ExifIfd ifd, ExifTag tag) const;
 
     Orientation orientation() const;
     int width() const { return mWidth; }
