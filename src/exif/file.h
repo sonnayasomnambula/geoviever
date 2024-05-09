@@ -67,10 +67,10 @@ public:
     bool save(const QString& fileName);
 
     void setValue(ExifIfd ifd, ExifTag tag, const QVector<ExifRational> urational);
-    QVector<ExifRational> uRationalVector(ExifIfd ifd, ExifTag tag) const;
+    Q_DECL_DEPRECATED QVector<ExifRational> uRationalVector(ExifIfd ifd, ExifTag tag) const;
 
     void setValue(ExifIfd ifd, ExifTag tag, const QByteArray& ascii);
-    QByteArray ascii(ExifIfd ifd, ExifTag tag) const;
+    Q_DECL_DEPRECATED QByteArray ascii(ExifIfd ifd, ExifTag tag) const;
 
     QMap<ExifTag, QVariant> values(ExifIfd ifd) const;
     QVariant value(ExifIfd ifd, ExifTag tag) const;

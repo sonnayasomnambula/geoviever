@@ -130,6 +130,21 @@ public:
         return trimTrailingNull(QByteArray((const char*)e->data, e->size));
     }
 
+    static QVariant decodeUtf16LE(ExifEntry* e)
+    {
+        QVector<uint16_t> BE;
+        BE.reserve(e->size / 2);
+        for (size_t i = 0; i < e->size; ++i) {
+            if (i % 2) {
+                BE.last() |= (uint16_t(e->data[i]) << 8);
+            } else {
+                BE.append(e->data[i]);
+            }
+        }
+
+        return trimTrailingNull(QString::fromUtf16(BE.data(), BE.size()));
+    }
+
     static QVariant decodeRaw(ExifEntry* e)
     {
         if (e->components == 1 && e->size == 1)
@@ -199,26 +214,54 @@ public:
             return {};
         }
 
+        enum class Encoding { Default, Utf16LE, Raw };
+        Encoding encoding = Encoding::Default;
+
         switch (e->tag)
         {
         case EXIF_TAG_USER_COMMENT:
-            if (e->format == EXIF_FORMAT_UNDEFINED) return decodeRaw(e); else break; // EXIF_FORMAT_ASCII can be decoded by default
+            if (e->format == EXIF_FORMAT_UNDEFINED) // EXIF_FORMAT_ASCII can be decoded by default
+                encoding = Encoding::Raw;
+            break;
         case EXIF_TAG_EXIF_VERSION:
-            if (e->components == 4) return decodeRaw(e); else break; // also must be EXIF_FORMAT_UNDEFINED, but FastStone don't care
+            if (e->components == 4)
+                encoding = Encoding::Raw;
+            break;
         case EXIF_TAG_FLASH_PIX_VERSION:
         case EXIF_TAG_COMPONENTS_CONFIGURATION:
-            if (e->format == EXIF_FORMAT_UNDEFINED && e->components == 4) return decodeRaw(e); else break;
+            if (e->format == EXIF_FORMAT_UNDEFINED && e->components == 4)
+                encoding = Encoding::Raw;
+            break;
         case EXIF_TAG_FILE_SOURCE:
         case EXIF_TAG_SCENE_TYPE:
-            if (e->format == EXIF_FORMAT_UNDEFINED && e->components == 1) return decodeRaw(e); else break;
+            if (e->format == EXIF_FORMAT_UNDEFINED && e->components == 1)
+                encoding = Encoding::Raw;
+            break;
+        case EXIF_TAG_XP_TITLE:
+        case EXIF_TAG_XP_COMMENT:
+        case EXIF_TAG_XP_AUTHOR:
+        case EXIF_TAG_XP_KEYWORDS:
+        case EXIF_TAG_XP_SUBJECT:
+            encoding = Encoding::Utf16LE;
+            break;
         case EXIF_TAG_INTEROPERABILITY_VERSION:
             // NB! EXIF_TAG_INTEROPERABILITY_VERSION == EXIF_TAG_GPS_LATITUDE
-            if (e->format == EXIF_FORMAT_UNDEFINED) return decodeRaw(e); else break;
+            if (e->format == EXIF_FORMAT_UNDEFINED)
+                encoding = Encoding::Raw;
+            break;
         default:
             break; // make GCC happy
         }
 
-        return decodeDefault(e);
+        switch (encoding)
+        {
+        case Encoding::Utf16LE:
+            return decodeUtf16LE(e);
+        case Encoding::Raw:
+            return decodeRaw(e);
+        default:
+            return decodeDefault(e);
+        }
     }
 };
 
