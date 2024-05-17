@@ -17,27 +17,7 @@ class QString;
 
 namespace Exif {
 
-
-namespace Tag {
-namespace GPS {
-static const ExifTag LATITUDE      = static_cast<ExifTag>(EXIF_TAG_GPS_LATITUDE);
-static const ExifTag LONGITUDE     = static_cast<ExifTag>(EXIF_TAG_GPS_LONGITUDE);
-static const ExifTag ALTITUDE      = static_cast<ExifTag>(EXIF_TAG_GPS_ALTITUDE);
-static const ExifTag LATITUDE_REF  = static_cast<ExifTag>(EXIF_TAG_GPS_LATITUDE_REF);
-static const ExifTag LONGITUDE_REF = static_cast<ExifTag>(EXIF_TAG_GPS_LONGITUDE_REF);
-static const ExifTag ALTITUDE_REF  = static_cast<ExifTag>(EXIF_TAG_GPS_ALTITUDE_REF);
-} // namespace GPS
-} // namespace Tag
-
-
 namespace Utils {
-/// used in ALTITUDE_REF tag
-enum class SeaLevel
-{
-    Above = 0,
-    Below = 1
-};
-
 
 QVector<ExifRational> toDMS(double degrees, unsigned precision = 10000);
 QVector<ExifRational> toSingleRational(double value, unsigned precision = 1000);

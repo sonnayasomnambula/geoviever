@@ -11,6 +11,8 @@
 
 #include "exif/file.h"
 #include "exif/utils.h"
+
+#include "exifstorage.h"
 #include "model.h"
 #include "pics.h"
 
@@ -78,136 +80,6 @@ void Checker::updateChildrenCheckState(const QModelIndex &index)
         for (const auto& child: children)
             updateChildrenCheckState(child);
     }
-}
-
-void ExifReader::parse(const QString& path)
-{
-    if (!sender()) return; // disconnected
-
-    if (auto photo = load(path))
-        emit ready(photo);
-    else
-        emit failed(path);
-}
-
-QSharedPointer<Photo> ExifReader::load(const QString& path)
-{
-    Exif::File exif;
-    if (!exif.load(QDir::toNativeSeparators(path), false))
-        return {}; // no EXIF here
-
-    auto photo = QSharedPointer<Photo>::create();
-    photo->path = path;
-
-    auto latVal = exif.value(EXIF_IFD_GPS, Exif::Tag::GPS::LATITUDE);
-    auto lonVal = exif.value(EXIF_IFD_GPS, Exif::Tag::GPS::LONGITUDE);
-    auto latRef = exif.value(EXIF_IFD_GPS, Exif::Tag::GPS::LATITUDE_REF).toByteArray();
-    auto lonRef = exif.value(EXIF_IFD_GPS, Exif::Tag::GPS::LONGITUDE_REF).toByteArray();
-
-    if (!latVal.isNull() && !lonVal.isNull())
-        photo->position = Exif::Utils::fromLatLon(latVal.toList(), latRef, lonVal.toList(), lonRef);
-
-    photo->orientation = exif.orientation();
-
-    QPixmap pix = exif.thumbnail(MapPhotoListModel::THUMBNAIL_SIZE, MapPhotoListModel::THUMBNAIL_SIZE);
-    if (!pix.isNull())
-        photo->pixmap = Pics::toBase64(pix, "JPEG");
-
-    return photo;
-}
-
-ExifStorage::ExifStorage()
-{
-    auto reader = new ExifReader;
-    reader->moveToThread(&mThread);
-    connect(&mThread, &QThread::finished, reader, &QObject::deleteLater);
-    connect(this, &ExifStorage::parse, reader, &ExifReader::parse);
-    connect(reader, &ExifReader::ready, this, &ExifStorage::add);
-    connect(reader, &ExifReader::failed, this, &ExifStorage::fail);
-    mThread.start();
-}
-
-void ExifStorage::add(const QSharedPointer<Photo>& photo)
-{
-    int rest = 0;
-
-    {
-        QMutexLocker lock(&mMutex);
-        mData[photo->path] = photo;
-        mInProgress.remove(photo->path);
-        rest = mInProgress.size();
-    }
-
-    emit ready(photo);
-    emit remains(rest);
-}
-
-void ExifStorage::fail(const QString& path)
-{
-    int rest = 0;
-
-    {
-        QMutexLocker lock(&mMutex);
-        mInProgress.remove(path);
-        rest = mInProgress.size();
-    }
-
-    emit remains(rest);
-}
-
-ExifStorage ExifStorage::init()
-{
-    qRegisterMetaType< QSharedPointer<Photo> >();
-    return {};
-}
-
-ExifStorage* ExifStorage::instance()
-{
-    static ExifStorage storage = init();
-    return &storage;
-}
-
-void ExifStorage::destroy()
-{
-    auto storage = instance();
-    storage->disconnect();
-
-    storage->mThread.quit();
-    storage->mThread.wait();
-}
-
-QSharedPointer<Photo> ExifStorage::data(const QString& path)
-{
-    auto storage = instance();
-    QMutexLocker lock(&storage->mMutex);
-    auto i = storage->mData.constFind(path);
-    if (i != storage->mData.constEnd())
-        return *i;
-
-    if (!storage->mInProgress.contains(path))
-    {
-        storage->mInProgress.insert(path);
-        emit storage->parse(path);
-    }
-
-    return {};
-}
-
-QPointF ExifStorage::coords(const QString& path)
-{
-    auto storage = instance();
-    QMutexLocker lock(&storage->mMutex);
-    auto i = storage->mData.constFind(path);
-    if (i != storage->mData.constEnd())
-        return (*i)->position;
-
-    if (!storage->mInProgress.contains(path))
-    {
-        storage->mInProgress.insert(path);
-        emit storage->parse(path);
-    }
-
-    return {};
 }
 
 FileTreeModel::FileTreeModel(QObject *parent)
@@ -300,6 +172,8 @@ const QStringList FileTreeModel::entryList(const QString &dir, const QStringList
 // QML-used objects must be destoyed after QML engine so don't pass parent here
 MapPhotoListModel::MapPhotoListModel() : mBuckets(this), mBubbles(THUMBNAIL_SIZE, Qt::darkBlue)
 {
+    ExifReader::thumbnailSize = THUMBNAIL_SIZE;
+
     connect(this, &MapPhotoListModel::zoomChanged, this, &MapPhotoListModel::updateBuckets);
 }
 
@@ -489,7 +363,7 @@ QStringList MapPhotoListModel::Bucket::files() const
 {
     QStringList list;
     list.reserve(photos.size());
-    for (const QSharedPointer<Photo>& photo: photos)
+    for (const auto& photo: photos)
         list.append(photo->path);
     return list;
 }

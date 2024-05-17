@@ -2,7 +2,6 @@
 #define PIXMAPLABEL_H
 
 #include <QLabel>
-#include <QVariant>
 
 class PixmapLabel : public QLabel
 {

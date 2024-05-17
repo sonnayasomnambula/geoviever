@@ -5,7 +5,6 @@
 #include <QFileSystemModel>
 #include <QGeoCoordinate>
 #include <QImageReader>
-#include <QKeyEvent>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQmlError>
@@ -19,10 +18,14 @@
 
 #include <cmath>
 
+#include "exif/file.h"
+
 #include "abstractsettings.h"
+#include "exifstorage.h"
 #include "model.h"
 #include "mainwindow.h"
 #include "pics.h"
+#include "tooltip.h"
 #include "ui_mainwindow.h"
 
 struct Settings : AbstractSettings
@@ -173,164 +176,6 @@ void MainWindow::saveSettings()
     settings.dirs.root = ui->root->text();
     settings.filter = ui->filter->text();
 }
-
-class ToolTip : public QTableView
-{
-    int mTimerId = 0;
-
-    class Model : public QAbstractTableModel
-    {
-        QStringList mData;
-        int mRowCount = 0;
-        int mColCount = 0;
-
-    public:
-        using QAbstractTableModel::QAbstractTableModel;
-
-        int rowCount(const QModelIndex& parent = {}) const override
-        {
-            return parent.isValid() ? 0 : mRowCount;
-        }
-
-        int columnCount(const QModelIndex& parent = {}) const override
-        {
-            return parent.isValid() ? 0 : mColCount;
-        }
-
-        QVariant data(const QModelIndex& index, int role) const override
-        {
-            int internalIndex = index.row() * mColCount + index.column();
-            if (internalIndex >= mData.size())
-                return {};
-
-            if (role == Qt::DecorationRole)
-                if (auto photo = ExifStorage::data(mData[internalIndex]))
-                    return Pics::fromBase64(photo->pixmap);
-
-            if (role == FilePathRole)
-                return mData[internalIndex];
-
-            if (role == Qt::SizeHintRole)
-                return QSize(MapPhotoListModel::THUMBNAIL_SIZE + 4, MapPhotoListModel::THUMBNAIL_SIZE + 4);
-
-            return {};
-        }
-
-        void setFiles(const QStringList& files)
-        {
-            if (mData == files)
-                return;
-
-            beginResetModel();
-            mData = files;
-
-            mRowCount = std::sqrt(1.0 * mData.size());
-            mColCount = std::ceil(1.0 * mData.size() / mRowCount);
-            Q_ASSERT(mColCount * mRowCount >= mData.size());
-
-            const int MAX_COLS = 25;
-            if (mColCount > MAX_COLS)
-            {
-                mColCount = MAX_COLS;
-                mRowCount = std::ceil(1.0 * mData.size() / mColCount);
-            }
-
-            endResetModel();
-        }
-
-    } * mModel = new Model(this);
-
-    void moveSelection(int dx, int dy)
-    {
-        auto current = currentIndex();
-        auto next = current.sibling(current.row() + dy, current.column() + dx);
-        if (next.isValid())
-            setCurrentIndex(next);
-    }
-
-protected:
-    void enterEvent(QEvent*) override
-    {
-        if (mTimerId)
-        {
-            killTimer(mTimerId);
-            mTimerId = 0;
-        }
-    }
-
-    void leaveEvent(QEvent*) override
-    {
-        mTimerId = startTimer(600);
-    }
-
-    void hideEvent(QHideEvent*) override
-    {
-        if (mTimerId)
-        {
-            killTimer(mTimerId);
-            mTimerId = 0;
-        }
-    }
-
-    void keyPressEvent(QKeyEvent* e) override
-    {
-        if (e->key() == Qt::Key_Escape)
-            hide();
-
-        if (e->key() == Qt::Key_Left)
-            moveSelection(-1, 0);
-
-        if (e->key() == Qt::Key_Right)
-            moveSelection(+1, 0);
-
-        if (e->key() == Qt::Key_Up)
-            moveSelection(0, -1);
-
-        if (e->key() == Qt::Key_Down)
-            moveSelection(0, +1);
-
-        if (e->key() == Qt::Key_PageUp)
-            moveSelection(0, -currentIndex().row());
-
-        if (e->key() == Qt::Key_PageDown)
-            moveSelection(0, mModel->rowCount() - currentIndex().row() - 1);
-
-        if (e->key() == Qt::Key_Home)
-            moveSelection(-currentIndex().column(), 0);
-
-        if (e->key() == Qt::Key_End)
-            moveSelection(mModel->columnCount() - currentIndex().column() - 1, 0);
-    }
-
-    void timerEvent(QTimerEvent* e) override
-    {
-        if (e->timerId() == mTimerId)
-            hide();
-    }
-
-public:
-    enum { FilePathRole = Qt::UserRole };
-
-    explicit ToolTip(QWidget* parent = nullptr) : QTableView(parent)
-    {
-        setWindowFlags(Qt::ToolTip);
-        setModel(mModel);
-        horizontalHeader()->hide();
-        verticalHeader()->hide();
-        setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-        setShowGrid(false);
-    }
-
-    void setFiles(const QStringList& files)
-    {
-        mModel->setFiles(files);
-        resizeRowsToContents();
-        resizeColumnsToContents();
-    }
-
-    QAbstractItemModel* model() const { return mModel; }
-};
 
 static QRect getRectToShow(QTableView* t, QAbstractItemModel* m, const QPoint& pos)
 {

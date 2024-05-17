@@ -1,13 +1,11 @@
-#include "exif/utils.h"
-
 #include <QDebug>
 #include <QGeoCoordinate>
 #include <QPointF>
 #include <QString>
 
 #include <cmath>
-#include <string>
 
+#include "exif/utils.h"
 
 QDebug operator<<(QDebug debug, const ExifRational& urational)
 {

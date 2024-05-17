@@ -16,6 +16,24 @@ struct _ExifMem;
 
 namespace Exif {
 
+namespace Tag {
+namespace GPS {
+static const ExifTag LATITUDE      = static_cast<ExifTag>(EXIF_TAG_GPS_LATITUDE);
+static const ExifTag LONGITUDE     = static_cast<ExifTag>(EXIF_TAG_GPS_LONGITUDE);
+static const ExifTag ALTITUDE      = static_cast<ExifTag>(EXIF_TAG_GPS_ALTITUDE);
+static const ExifTag LATITUDE_REF  = static_cast<ExifTag>(EXIF_TAG_GPS_LATITUDE_REF);
+static const ExifTag LONGITUDE_REF = static_cast<ExifTag>(EXIF_TAG_GPS_LONGITUDE_REF);
+static const ExifTag ALTITUDE_REF  = static_cast<ExifTag>(EXIF_TAG_GPS_ALTITUDE_REF);
+} // namespace GPS
+} // namespace Tag
+
+/// used in ALTITUDE_REF tag
+enum class SeaLevel
+{
+    Above = 0,
+    Below = 1
+};
+
 class Orientation
 {
     uint16_t mValue;
@@ -43,6 +61,28 @@ public:
 /// You can load all tags from the file with load function.
 /// Set functions replaces an existing tag in a ifd or creates a new one.
 /// You must know the format of the tag in order to get its value.
+///
+/// Usage:
+///
+/// Exif::File exif;
+/// if (exif.load(filename, false))
+/// {
+///     for (ExifIfd ifd: { EXIF_IFD_0, EXIF_IFD_1, EXIF_IFD_EXIF, EXIF_IFD_GPS })
+///     {
+///         qDebug() << "=====================";
+///         qDebug() << "IFD" << exif_ifd_get_name(ifd);
+///         qDebug() << "=====================";
+///         auto values = exif.values(ifd);
+///         for (auto tag: values.keys())
+///         {
+///             qDebug() << exif_tag_get_name_in_ifd(tag, ifd));
+///             qDebug() << exif_tag_get_description_in_ifd(tag, ifd);
+///             qDebug() << values[tag];
+///             qDebug() << "---------------------";
+///         }
+///     }
+/// }
+///
 class File
 {
     Q_DECLARE_TR_FUNCTIONS(File)

@@ -3,30 +3,13 @@
 
 #include <QFileSystemModel>
 #include <QGeoCoordinate>
-#include <QMap>
-#include <QMutex>
 #include <QPersistentModelIndex>
-#include <QSharedPointer>
 #include <QSortFilterProxyModel>
-#include <QSet>
-#include <QThread>
 #include <QVector>
 
 #include "exif/file.h"
 
-struct Photo
-{
-    QString path;
-    QPointF position;
-    Exif::Orientation orientation;
-    QString pixmap; // base64 thumbnail
-};
-
-Q_DECLARE_METATYPE(QSharedPointer<Photo>)
-
-bool operator ==(const Photo& L, const Photo& R);
-bool operator !=(const Photo& L, const Photo& R);
-
+struct Photo;
 
 class Bubbles
 {
@@ -53,49 +36,6 @@ private:
     QMap<quintptr, int> mData;
 };
 
-class ExifReader : public QObject
-{
-    Q_OBJECT
-
-signals:
-    void ready(const QSharedPointer<Photo>& photo);
-    void failed(const QString& path);
-
-public slots:
-    void parse(const QString& path);
-
-public:
-    static QSharedPointer<Photo> load(const QString& path);
-};
-
-class ExifStorage : public QObject
-{
-    Q_OBJECT
-
-signals:
-    void parse(const QString& file);
-    void ready(const QSharedPointer<Photo>& photo);
-    void remains(int count);
-
-public:
-    static ExifStorage* instance();
-    static void destroy();
-
-    static QSharedPointer<Photo> data(const QString& path);
-    static QPointF coords(const QString& path);
-
-private:
-    ExifStorage();
-    void add(const QSharedPointer<Photo>& photo);
-    void fail(const QString& path);
-
-    static ExifStorage init();
-
-    QThread mThread;
-    mutable QMutex mMutex;
-    QMap<QString, QSharedPointer<Photo>> mData;
-    QSet<QString> mInProgress;
-};
 
 class FileTreeModel : public QFileSystemModel, public Checker
 {
@@ -124,6 +64,7 @@ private:
     QStringList entryList(const QString& dir) const;
 };
 
+
 class MapPhotoListModel : public QAbstractListModel
 {
     Q_OBJECT
@@ -151,7 +92,7 @@ public:
 
     void insert(const QString& path);
     void remove(const QString& path);
-    void update(const QSharedPointer<Photo> &photo);
+    void update(const QSharedPointer<Photo>& data);
 
     void setZoom(qreal zoom);
     void setCenter(const QGeoCoordinate& center);
