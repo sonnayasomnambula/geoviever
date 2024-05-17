@@ -32,9 +32,13 @@ bool Orientation::isRotated() const
     return false;
 }
 
-class FileHelper
+class FileHelper // TODO use Qt private class
 {
 public:
+    static const QByteArray AsciiMarker;
+    static const QByteArray UnicodeMarker;
+    static const QByteArray JisMarker;
+
     static void log(ExifLog* /*log*/, ExifLogCode code, const char* domain, const char* format, va_list args, void* self)
     {
         constexpr size_t size = 512;
@@ -127,36 +131,35 @@ public:
 
     static QVariant decodeAscii(ExifEntry* e)
     {
-        return trimTrailingNull(QByteArray((const char*)e->data, e->size));
+        // It should be ASCII here, but Windows Explorer doesn't care and writes UTF-8
+        return trimTrailingNull(QString::fromUtf8((const char*)e->data, e->size));
     }
 
     static QVariant decodeUtf16LE(ExifEntry* e)
     {
-        QVector<uint16_t> BE;
-        BE.reserve(e->size / 2);
-        for (size_t i = 0; i < e->size; ++i) {
-            if (i % 2) {
-                BE.last() |= (uint16_t(e->data[i]) << 8);
-            } else {
-                BE.append(e->data[i]);
-            }
-        }
-
-        return trimTrailingNull(QString::fromUtf16(BE.data(), BE.size()));
+#if Q_BYTE_ORDER == Q_LITTLE_ENDIAN
+        return trimTrailingNull(QString::fromUtf16(reinterpret_cast<uint16_t*>(e->data), e->size / 2));
+#else
+        static_assert(false, "not implemented", Q_FUNC_INFO);
+#endif
     }
 
     static QVariant decodeRaw(ExifEntry* e)
     {
+        Q_ASSERT(AsciiMarker.size() == 8);
+        Q_ASSERT(UnicodeMarker.size() == 8);
+        Q_ASSERT(JisMarker.size() == 8);
+
         if (e->components == 1 && e->size == 1)
             return e->data[0];
 
-        if ((e->size >= 8) && !memcmp (e->data, "ASCII\0\0\0", 8))
+        if ((e->size >= (unsigned)AsciiMarker.size()) && !memcmp (e->data, AsciiMarker.data(), AsciiMarker.size()))
             return trimTrailingNull(QString::fromLatin1((const char *) e->data + 8, e->size - 8));
 
-        if ((e->size >= 8) && !memcmp (e->data, "UNICODE\0", 8))
+        if ((e->size >= (unsigned)UnicodeMarker.size()) && !memcmp (e->data, UnicodeMarker.data(), UnicodeMarker.size()))
             return trimTrailingNull(QString::fromUtf8((const char *) e->data + 8, e->size - 8));
 
-        if ((e->size >= 8) && !memcmp (e->data, "JIS\0\0\0\0\0", 8))
+        if ((e->size >= (unsigned)JisMarker.size()) && !memcmp (e->data, JisMarker.data(), JisMarker.size()))
         {
             warning(e, "JIS strings are not supported");
             return {};
@@ -214,56 +217,116 @@ public:
             return {};
         }
 
-        enum class Encoding { Default, Utf16LE, Raw };
-        Encoding encoding = Encoding::Default;
-
         switch (e->tag)
         {
         case EXIF_TAG_USER_COMMENT:
             if (e->format == EXIF_FORMAT_UNDEFINED) // EXIF_FORMAT_ASCII can be decoded by default
-                encoding = Encoding::Raw;
+                return decodeRaw(e);
             break;
         case EXIF_TAG_EXIF_VERSION:
             if (e->components == 4)
-                encoding = Encoding::Raw;
+                return decodeRaw(e);
             break;
         case EXIF_TAG_FLASH_PIX_VERSION:
         case EXIF_TAG_COMPONENTS_CONFIGURATION:
             if (e->format == EXIF_FORMAT_UNDEFINED && e->components == 4)
-                encoding = Encoding::Raw;
+                return decodeRaw(e);
             break;
         case EXIF_TAG_FILE_SOURCE:
         case EXIF_TAG_SCENE_TYPE:
             if (e->format == EXIF_FORMAT_UNDEFINED && e->components == 1)
-                encoding = Encoding::Raw;
+                return decodeRaw(e);
             break;
         case EXIF_TAG_XP_TITLE:
         case EXIF_TAG_XP_COMMENT:
         case EXIF_TAG_XP_AUTHOR:
         case EXIF_TAG_XP_KEYWORDS:
         case EXIF_TAG_XP_SUBJECT:
-            encoding = Encoding::Utf16LE;
+            return decodeUtf16LE(e);
             break;
         case EXIF_TAG_INTEROPERABILITY_VERSION:
             // NB! EXIF_TAG_INTEROPERABILITY_VERSION == EXIF_TAG_GPS_LATITUDE
             if (e->format == EXIF_FORMAT_UNDEFINED)
-                encoding = Encoding::Raw;
+                return decodeRaw(e);
             break;
         default:
             break; // make GCC happy
         }
 
-        switch (encoding)
+        return decodeDefault(e);
+    }
+
+    static ExifEntry* allocate(ExifIfd ifd, ExifTag tag, size_t size, File* file)
+    {
+        if (auto data = file->mExifData) {
+            if (auto content = data->ifd[ifd]) {
+                if (auto entry = exif_content_get_entry(content, tag)) {
+                    if (entry->size == size) {
+                        return entry;
+                    }
+
+                    entry->data = reinterpret_cast<unsigned char*>(exif_mem_realloc(file->mAllocator, entry->data, size));
+                    entry->size = size;
+                    return entry;
+                } else {
+                    entry = exif_entry_new_mem(file->mAllocator);
+                    entry->data = reinterpret_cast<unsigned char*>(exif_mem_alloc(file->mAllocator, size));
+                    entry->size = size;
+                    entry->tag = tag;
+                    exif_content_add_entry(content, entry);
+                    exif_entry_unref(entry);
+                    return entry;
+                }
+            }
+        }
+
+        return nullptr;
+    }
+
+    static void erase(ExifIfd ifd, ExifTag tag, File* file)
+    {
+        if (auto data = file->mExifData)
+            if (auto content = data->ifd[ifd])
+                if (auto entry = exif_content_get_entry(content, tag))
+                        exif_content_remove_entry(content, entry);
+    }
+
+    static void setUtf16LE(ExifIfd ifd, ExifTag tag, ExifFormat format, const QString& str, File* file)
+    {
+        if (auto entry = allocate(ifd, tag, str.size() * 2, file))
         {
-        case Encoding::Utf16LE:
-            return decodeUtf16LE(e);
-        case Encoding::Raw:
-            return decodeRaw(e);
-        default:
-            return decodeDefault(e);
+            QVector<uint16_t> encoded;
+            encoded.reserve(str.size());
+
+            for (const QChar& ch : qAsConst(str))
+                encoded.append(ch.unicode());
+
+#if Q_BYTE_ORDER == Q_LITTLE_ENDIAN
+            memcpy(entry->data, encoded.data(), entry->size);
+#else
+            static_assert(false, "not implemented", Q_FUNC_INFO);
+#endif
+
+            entry->components = entry->size;
+            entry->format = format;
+        }
+    }
+
+    static void setRaw(ExifIfd ifd, ExifTag tag, ExifFormat format, const QByteArray& bytes, File* file)
+    {
+        if (auto entry = allocate(ifd, tag, bytes.size(), file))
+        {
+            memcpy(entry->data, bytes.data(), entry->size);
+            entry->components = entry->size;
+            entry->format = format;
         }
     }
 };
+
+
+const QByteArray FileHelper::AsciiMarker = QByteArrayLiteral("ASCII\0\0\0");
+const QByteArray FileHelper::UnicodeMarker = QByteArrayLiteral("UNICODE\0");
+const QByteArray FileHelper::JisMarker = QByteArrayLiteral("JIS\0\0\0\0\0");
 
 
 File::File()
@@ -542,40 +605,32 @@ void File::setValue(ExifIfd ifd, ExifTag tag, const QByteArray& ascii)
 {
     if (!mExifData) return;
 
-    void* memory;
-    size_t size = static_cast<size_t>(ascii.size());
-    if (size && *ascii.rbegin())
-        ++size; // add 1 for the '\0' terminator (supported by QByteArray, see the docs)
-    ExifEntry *entry = exif_content_get_entry(mExifData->ifd[ifd], tag);
-
-    if (entry)
+    if (ascii.isEmpty())
     {
-        if (entry->size == size)
-        {
-            memcpy(entry->data, ascii.data(), size);
-            return;
-        }
-        else
-        {
-            memory = exif_mem_realloc(mAllocator, entry->data, size);
-        }
-    }
-    else
-    {
-        entry = exif_entry_new_mem(mAllocator);
-        memory = exif_mem_alloc(mAllocator, size);
+        FileHelper::erase(ifd, tag, this);
+        return;
     }
 
-    memcpy(memory, ascii.data(), size);
+    switch (tag)
+    {
+    case EXIF_TAG_XP_TITLE:
+    case EXIF_TAG_XP_COMMENT:
+    case EXIF_TAG_XP_AUTHOR:
+    case EXIF_TAG_XP_KEYWORDS:
+    case EXIF_TAG_XP_SUBJECT:
+        return FileHelper::setUtf16LE(ifd, tag, EXIF_FORMAT_BYTE, QString::fromUtf8(ascii), this);
+    case EXIF_TAG_EXIF_VERSION:
+        return FileHelper::setRaw(ifd, tag, EXIF_FORMAT_UNDEFINED, ascii, this);
+    case EXIF_TAG_USER_COMMENT:
+        return FileHelper::setRaw(ifd, tag, EXIF_FORMAT_UNDEFINED, FileHelper::UnicodeMarker + ascii, this);
+    default:
+        return FileHelper::setRaw(ifd, tag, EXIF_FORMAT_ASCII, ascii, this);
+    }
+}
 
-    entry->data = static_cast<unsigned char*>(memory);
-    entry->size = size;
-    entry->tag = tag;
-    entry->components = entry->size;
-    entry->format = EXIF_FORMAT_ASCII;
-
-    exif_content_add_entry(mExifData->ifd[ifd], entry); // Attach the ExifEntry to an IFD
-    exif_entry_unref(entry);
+void File::setValue(ExifIfd ifd, ExifTag tag, const char *ascii)
+{
+    setValue(ifd, tag, QByteArray::fromRawData(ascii, strlen(ascii)));
 }
 
 QByteArray File::ascii(ExifIfd ifd, ExifTag tag) const
@@ -612,6 +667,43 @@ QVariant File::value(ExifIfd ifd, ExifTag tag) const
     return {};
 }
 
+void File::setValue(ExifIfd ifd, ExifTag tag, const QString& str)
+{
+    if (!mExifData) return;
+
+    if (str.isEmpty())
+    {
+        FileHelper::erase(ifd, tag, this);
+        return;
+    }
+
+    switch (tag)
+    {
+    case EXIF_TAG_XP_TITLE:
+    case EXIF_TAG_XP_COMMENT:
+    case EXIF_TAG_XP_AUTHOR:
+    case EXIF_TAG_XP_KEYWORDS:
+    case EXIF_TAG_XP_SUBJECT:
+        return FileHelper::setUtf16LE(ifd, tag, EXIF_FORMAT_BYTE, str, this);
+    case EXIF_TAG_EXIF_VERSION:
+        return FileHelper::setRaw(ifd, tag, EXIF_FORMAT_UNDEFINED, str.toUtf8(), this);
+    case EXIF_TAG_USER_COMMENT:
+        return FileHelper::setRaw(ifd, tag, EXIF_FORMAT_UNDEFINED, FileHelper::UnicodeMarker + str.toUtf8(), this);
+    default:
+        return FileHelper::setRaw(ifd, tag, EXIF_FORMAT_ASCII, str.toUtf8(), this);
+    }
+}
+
+void File::setValue(ExifIfd ifd, ExifTag tag, const wchar_t* str)
+{
+    return setValue(ifd, tag, QString::fromWCharArray(str));
+}
+
+void File::remove(ExifIfd ifd, ExifTag tag)
+{
+    FileHelper::erase(ifd, tag, this);
+}
+
 QPixmap File::thumbnail(int width, int height) const
 {
     if (mExifData && mExifData->data && mExifData->size)
@@ -625,8 +717,12 @@ QPixmap File::thumbnail(int width, int height) const
         QSize size = reader.size();
         if (orientation == Orientation::Unknown && ((mWidth > mHeight) != (size.width() > size.height())))
         {
+            // We don't know whether the picture should be rotated 90CW or 270CW.
+            // Future idea: compare the top line of image pixels with the top line of thumbnail pixels.
             std::swap(width, height);
-            orientation = Orientation::Rotate270CW;
+
+            Orientation imageOrientation = value(EXIF_IFD_0, EXIF_TAG_ORIENTATION).toInt();
+            orientation = imageOrientation.isRotated() ? imageOrientation : Orientation::Rotate270CW;
         }
 
         return Pics::fromImageReader(&reader, width, height, orientation);

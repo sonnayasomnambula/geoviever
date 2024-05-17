@@ -2,7 +2,6 @@
 #define EXIF_FILE_H
 
 #include <QCoreApplication>
-#include <QString>
 
 #include <libexif/exif-tag.h>
 #include <libexif/exif-log.h>
@@ -106,11 +105,16 @@ public:
     bool load(const QString& fileName, bool createIfEmpty = true);
     bool save(const QString& fileName);
 
-    void setValue(ExifIfd ifd, ExifTag tag, const QVector<ExifRational> urational);
     Q_DECL_DEPRECATED QVector<ExifRational> uRationalVector(ExifIfd ifd, ExifTag tag) const;
+    void setValue(ExifIfd ifd, ExifTag tag, const QVector<ExifRational> urational);
 
-    void setValue(ExifIfd ifd, ExifTag tag, const QByteArray& ascii);
     Q_DECL_DEPRECATED QByteArray ascii(ExifIfd ifd, ExifTag tag) const;
+    void setValue(ExifIfd ifd, ExifTag tag, const QByteArray& ascii);
+    void setValue(ExifIfd ifd, ExifTag tag, const char* ascii);
+    void setValue(ExifIfd ifd, ExifTag tag, const QString& str);
+    void setValue(ExifIfd ifd, ExifTag tag, const wchar_t* str);
+
+    void remove(ExifIfd ifd, ExifTag tag);
 
     QMap<ExifTag, QVariant> values(ExifIfd ifd) const;
     QVariant value(ExifIfd ifd, ExifTag tag) const;
