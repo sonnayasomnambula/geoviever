@@ -1,6 +1,7 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+#include <QDialog>
 #include <QMainWindow>
 
 QT_BEGIN_NAMESPACE
@@ -8,10 +9,24 @@ namespace Ui {
 class MainWindow;
 }
 
+class QListView;
+class QStringListModel;
 QT_END_NAMESPACE
 
 class FileTreeModel;
 class MapPhotoListModel;
+
+class KeywordsDialog : public QDialog
+{
+public:
+    explicit KeywordsDialog(QWidget *parent = nullptr);
+
+    void setKeywords(const QStringList& keywords);
+
+private:
+    QListView* mView = nullptr;
+    QStringListModel* mModel = nullptr;
+};
 
 class MainWindow : public QMainWindow
 {
@@ -34,6 +49,7 @@ private:
 
 private slots:
     void on_pickRoot_clicked();
+    void on_keywords_clicked();
     void on_root_textChanged(const QString& text);
     void on_filter_textChanged(const QString& text);
     void on_tree_doubleClicked(const QModelIndex& index);
@@ -42,6 +58,7 @@ private:
     Ui::MainWindow* ui = nullptr;
     FileTreeModel*    mTreeModel = nullptr;
     MapPhotoListModel* mMapModel = nullptr;
+    KeywordsDialog* mKeywordsDialog = nullptr;
 };
 
 #endif // MAINWINDOW_H

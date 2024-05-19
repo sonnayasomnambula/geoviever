@@ -111,8 +111,24 @@ QVariant FileTreeModel::data(const QModelIndex& index, int role) const
     if (role == Qt::CheckStateRole)
         return Checker::checkState(index);
 
-    if (index.column() == COLUMN_COORDS && (role == Qt::DisplayRole || role == Qt::EditRole ))
-        return isDir(index) ? QVariant() : QVariant(ExifStorage::coords(filePath(index)));
+    if ((role == Qt::DisplayRole || role == Qt::EditRole) && index.column() != COLUMN_NAME)
+    {
+        if (isDir(index))
+            return {};
+
+        if (auto photo = ExifStorage::data(filePath(index)))
+        {
+            switch (index.column())
+            {
+            case COLUMN_COORDS:
+                return photo->position;
+            case COLUMN_KEYWORDS:
+                return photo->keywords;
+            }
+        }
+
+        return {};
+    }
 
     return Super::data(index, role);
 }
@@ -126,8 +142,16 @@ bool FileTreeModel::setData(const QModelIndex& index, const QVariant& value, int
 
 QVariant FileTreeModel::headerData(int section, Qt::Orientation orientation, int role) const
 {
-    if (section == COLUMN_COORDS && orientation == Qt::Horizontal && role == Qt::DisplayRole)
-        return tr("Coords");
+    if (orientation == Qt::Horizontal && role == Qt::DisplayRole)
+    {
+        switch (section)
+        {
+        case COLUMN_COORDS:
+            return tr("Coords");
+        case COLUMN_KEYWORDS:
+            return tr("Keywords");
+        }
+    }
 
     return Super::headerData(section, orientation, role);
 }

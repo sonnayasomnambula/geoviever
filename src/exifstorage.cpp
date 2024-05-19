@@ -75,8 +75,9 @@ void ExifStorage::add(const QSharedPointer<Photo>& photo)
         QMutexLocker lock(&mMutex);
         mData[photo->path] = photo;
 
-        for (const QString& keyword: photo->keywords.split(';'))
-            mKeywords[keyword.trimmed()].insert(photo->path);
+        if (!photo->keywords.isEmpty())
+            for (const QString& keyword: photo->keywords.split(';'))
+                mKeywords[keyword.trimmed()].insert(photo->path);
 
         mInProgress.remove(photo->path);
         rest = mInProgress.size();
@@ -146,6 +147,13 @@ QPointF ExifStorage::coords(const QString& path)
     }
 
     return {};
+}
+
+QStringList ExifStorage::keywords()
+{
+    auto storage = instance();
+    QMutexLocker lock(&storage->mMutex);
+    return storage->mKeywords.keys();
 }
 
 QStringList ExifStorage::byKeyword(const QString& keyword)

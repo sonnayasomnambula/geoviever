@@ -46,7 +46,7 @@ signals:
     void removed(const QString& path);
 
 public:
-    enum Columns { COLUMN_NAME, COLUMN_COORDS, COLUMNS_COUNT };
+    enum Columns { COLUMN_NAME, COLUMN_COORDS, COLUMN_KEYWORDS, COLUMNS_COUNT };
 
     explicit FileTreeModel(QObject *parent = nullptr);
     int columnCount(const QModelIndex& parent) const override;

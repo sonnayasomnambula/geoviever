@@ -55,6 +55,8 @@ public:
 
     static QSharedPointer<Photo> data(const QString& path);
     Q_DECL_DEPRECATED static QPointF coords(const QString& path);
+
+    static QStringList keywords();
     static QStringList byKeyword(const QString& keyword);
 
 private:

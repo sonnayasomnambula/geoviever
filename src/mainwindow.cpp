@@ -5,12 +5,14 @@
 #include <QFileSystemModel>
 #include <QGeoCoordinate>
 #include <QImageReader>
+#include <QListView>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQmlError>
 #include <QScreen>
 #include <QScrollBar>
 #include <QSortFilterProxyModel>
+#include <QStringListModel>
 #include <QStyledItemDelegate>
 #include <QTableView>
 #include <QTimer>
@@ -28,6 +30,24 @@
 #include "tooltip.h"
 #include "ui_mainwindow.h"
 
+KeywordsDialog::KeywordsDialog(QWidget* parent)
+    : QDialog(parent)
+    , mView(new QListView(this))
+    , mModel(new QStringListModel(this))
+{
+    mView->setModel(mModel);
+
+    auto lay = new QVBoxLayout(this);
+    lay->setContentsMargins({});
+    lay->addWidget(mView);
+}
+
+void KeywordsDialog::setKeywords(const QStringList& keywords)
+{
+    if (mModel->stringList() != keywords)
+        mModel->setStringList(keywords);
+}
+
 struct Settings : AbstractSettings
 {
     struct {
@@ -43,6 +63,10 @@ struct Settings : AbstractSettings
         struct { State state = "window/horizontalSplitter.state"; } horizontalSplitter;
         struct { State state = "window/header.state"; } header;
     } window;
+
+    struct {
+        Geometry geometry = "keyboardDialog/geometry";
+    } keywordDialog;
 };
 
 class GeoCoordinateDelegate : public QStyledItemDelegate
@@ -182,6 +206,9 @@ void MainWindow::saveSettings()
 
     settings.dirs.root = ui->root->text();
     settings.filter = ui->filter->text();
+
+    if (mKeywordsDialog)
+        settings.keywordDialog.geometry.save(mKeywordsDialog);
 }
 
 static QRect getRectToShow(QTableView* t, QAbstractItemModel* m, const QPoint& pos)
@@ -288,6 +315,21 @@ void MainWindow::on_pickRoot_clicked()
         return;
 
     ui->root->setText(root);
+}
+
+void MainWindow::on_keywords_clicked()
+{
+    if (!mKeywordsDialog)
+    {
+        Settings settings;
+
+        mKeywordsDialog = new KeywordsDialog(this);
+        settings.keywordDialog.geometry.restore(mKeywordsDialog);
+
+        mKeywordsDialog->setKeywords(ExifStorage::keywords());
+    }
+
+    mKeywordsDialog->show();
 }
 
 void MainWindow::on_root_textChanged(const QString& text)
