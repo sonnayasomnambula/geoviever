@@ -63,8 +63,6 @@ private:
     void add(const QSharedPointer<Photo>& photo);
     void fail(const QString& path);
 
-    static ExifStorage init();
-
     QThread mThread;
     mutable QMutex mMutex;
     QMap<QString, QSharedPointer<Photo>> mData;

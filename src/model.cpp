@@ -221,6 +221,12 @@ QHash<int, QByteArray> MapPhotoListModel::roleNames() const
     return roles;
 }
 
+void MapPhotoListModel::clear()
+{
+    mKeys.clear();
+    mBuckets.clear();
+}
+
 void MapPhotoListModel::insert(const QString& path)
 {
     mKeys.append(path);
@@ -480,6 +486,15 @@ void MapPhotoListModel::BucketList::updateFrom(const BucketList &other)
 
     QList<Bucket>::clear();
     QList<Bucket>::append(other);
+
+    if (mModel) mModel->endResetModel();
+}
+
+void MapPhotoListModel::BucketList::clear()
+{
+    if (mModel) mModel->beginResetModel();
+
+    QList<Bucket>::clear();
 
     if (mModel) mModel->endResetModel();
 }

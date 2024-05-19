@@ -39,6 +39,9 @@
           </item>
           <item>
            <widget class="QLineEdit" name="filter">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
             <property name="sizePolicy">
              <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
               <horstretch>1</horstretch>

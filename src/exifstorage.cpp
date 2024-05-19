@@ -49,6 +49,8 @@ QSharedPointer<Photo> ExifReader::load(const QString& path)
 
 ExifStorage::ExifStorage()
 {
+    qRegisterMetaType< QSharedPointer<Photo> >();
+
     auto reader = new ExifReader;
     reader->moveToThread(&mThread);
     connect(&mThread, &QThread::finished, reader, &QObject::deleteLater);
@@ -97,15 +99,9 @@ void ExifStorage::fail(const QString& path)
     emit remains(rest);
 }
 
-ExifStorage ExifStorage::init()
-{
-    qRegisterMetaType< QSharedPointer<Photo> >();
-    return {};
-}
-
 ExifStorage* ExifStorage::instance()
 {
-    static ExifStorage storage = init();
+    static ExifStorage storage;
     return &storage;
 }
 

@@ -47,12 +47,19 @@ struct Settings : AbstractSettings
 
 class GeoCoordinateDelegate : public QStyledItemDelegate
 {
+    using Super = QStyledItemDelegate;
 public:
-    using QStyledItemDelegate::QStyledItemDelegate;
-    QString displayText(const QVariant& value, const QLocale& /*locale*/) const override {
+    using Super::Super;
+    QString displayText(const QVariant& value,
+                        const QLocale& /*locale*/) const override {
         if (!value.isValid()) return "";
         auto p = value.toPointF();
         return QGeoCoordinate(p.x(), p.y()).toString(QGeoCoordinate::DegreesWithHemisphere);
+    }
+    void initStyleOption(QStyleOptionViewItem* option,
+                         const QModelIndex& index) const override {
+        Super::initStyleOption(option, index);
+        option->displayAlignment = Qt::AlignLeft | Qt::AlignVCenter;
     }
 };
 
@@ -287,6 +294,7 @@ void MainWindow::on_root_textChanged(const QString& text)
 {
     mTreeModel->setRootPath(text);
     ui->tree->setRootIndex(mTreeModel->index(text));
+    mMapModel->clear();
 }
 
 

@@ -90,6 +90,8 @@ public:
     Q_INVOKABLE QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
     Q_INVOKABLE QHash<int, QByteArray> roleNames() const override;
 
+    void clear();
+
     void insert(const QString& path);
     void remove(const QString& path);
     void update(const QSharedPointer<Photo>& data);
@@ -136,6 +138,8 @@ private:
         bool insert(const QSharedPointer<Photo>& photo, double zoom);
         bool remove(const QString& path);
         void updateFrom(const BucketList& other);
+
+        void clear();
 
         bool operator ==(const BucketList& other) const;
         bool operator !=(const BucketList& other) const;
