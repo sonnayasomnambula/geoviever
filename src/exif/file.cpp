@@ -243,7 +243,6 @@ public:
         case EXIF_TAG_XP_KEYWORDS:
         case EXIF_TAG_XP_SUBJECT:
             return decodeUtf16LE(e);
-            break;
         case EXIF_TAG_INTEROPERABILITY_VERSION:
             // NB! EXIF_TAG_INTEROPERABILITY_VERSION == EXIF_TAG_GPS_LATITUDE
             if (e->format == EXIF_FORMAT_UNDEFINED)
@@ -620,9 +619,8 @@ void File::setValue(ExifIfd ifd, ExifTag tag, const QByteArray& ascii)
     case EXIF_TAG_XP_SUBJECT:
         return FileHelper::setUtf16LE(ifd, tag, EXIF_FORMAT_BYTE, QString::fromUtf8(ascii), this);
     case EXIF_TAG_EXIF_VERSION:
+    case EXIF_TAG_USER_COMMENT: // in QByteArray version, user comment is copied as is
         return FileHelper::setRaw(ifd, tag, EXIF_FORMAT_UNDEFINED, ascii, this);
-    case EXIF_TAG_USER_COMMENT:
-        return FileHelper::setRaw(ifd, tag, EXIF_FORMAT_UNDEFINED, FileHelper::UnicodeMarker + ascii, this);
     default:
         return FileHelper::setRaw(ifd, tag, EXIF_FORMAT_ASCII, ascii, this);
     }
@@ -697,6 +695,11 @@ void File::setValue(ExifIfd ifd, ExifTag tag, const QString& str)
 void File::setValue(ExifIfd ifd, ExifTag tag, const wchar_t* str)
 {
     return setValue(ifd, tag, QString::fromWCharArray(str));
+}
+
+void File::setValue(ExifIfd ifd, ExifTag tag, ExifFormat format, const QByteArray& bytes)
+{
+    FileHelper::setRaw(ifd, tag, format, bytes, this);
 }
 
 void File::remove(ExifIfd ifd, ExifTag tag)

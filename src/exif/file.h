@@ -114,6 +114,8 @@ public:
     void setValue(ExifIfd ifd, ExifTag tag, const QString& str);
     void setValue(ExifIfd ifd, ExifTag tag, const wchar_t* str);
 
+    void setValue(ExifIfd ifd, ExifTag tag, ExifFormat format, const QByteArray& bytes);
+
     void remove(ExifIfd ifd, ExifTag tag);
 
     QMap<ExifTag, QVariant> values(ExifIfd ifd) const;
