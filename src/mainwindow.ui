@@ -25,15 +25,18 @@
         <item>
          <layout class="QHBoxLayout" name="horizontalLayout">
           <item>
-           <widget class="QLineEdit" name="root">
+           <widget class="QComboBox" name="root">
             <property name="sizePolicy">
              <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-              <horstretch>5</horstretch>
+              <horstretch>4</horstretch>
               <verstretch>0</verstretch>
              </sizepolicy>
             </property>
+            <property name="editable">
+             <bool>true</bool>
+            </property>
             <property name="placeholderText">
-             <string>&lt;root path&gt;</string>
+             <string>&lt;root&gt;</string>
             </property>
            </widget>
           </item>
@@ -102,7 +105,7 @@
      <x>0</x>
      <y>0</y>
      <width>800</width>
-     <height>21</height>
+     <height>22</height>
     </rect>
    </property>
   </widget>

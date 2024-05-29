@@ -6,12 +6,14 @@
 #include <QGeoCoordinate>
 #include <QImageReader>
 #include <QListView>
+#include <QPainter>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQmlError>
 #include <QScreen>
 #include <QScrollBar>
 #include <QSortFilterProxyModel>
+#include <QStandardPaths>
 #include <QStringListModel>
 #include <QStyledItemDelegate>
 #include <QTableView>
@@ -52,6 +54,7 @@ struct Settings : AbstractSettings
 {
     struct {
         Tag<QString> root = "dirs/root";
+        Tag<QStringList> history = "dirs/history";
     } dirs;
 
     Tag<QString> filter = "filter";
@@ -87,6 +90,85 @@ public:
     }
 };
 
+ComboBoxClickableItemDelegate::ComboBoxClickableItemDelegate(const QImage& buttonImage, QComboBox* parent)
+    : Super(parent)
+    , mCombo(parent)
+    , mImage(buttonImage)
+{
+    mCombo->view()->installEventFilter(this);
+
+    mButtonSize = std::max(mButtonSize, mImage.width());
+    mButtonSize = std::max(mButtonSize, mImage.height());
+}
+
+void ComboBoxClickableItemDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const
+{
+    QStyleOptionViewItem opt = setOptions(index, option);
+    mButtonSize = std::max(mButtonSize, opt.rect.height());
+    opt.rect.setRight(opt.rect.right() - mButtonSize); // button is on the right
+
+    const bool hovered = index.row() == mHovered;
+    if (hovered) {
+        opt.state &= (~QStyle::State_Selected); // remove highlighting
+        opt.state &= (~QStyle::State_HasFocus); // remove focus rect
+    }
+
+    Super::paint(painter, opt, index);
+
+    painter->save();
+
+    // draw button rect
+
+    QRect buttonRect(opt.rect.right() + 1, opt.rect.top(), mButtonSize, mButtonSize);
+    QColor buttonColor = hovered ?
+                             opt.palette.color(QPalette::Highlight).lighter(210) :
+                             opt.palette.color(QPalette::Base);
+    painter->setPen(buttonColor);
+    painter->setBrush(buttonColor);
+    painter->drawRect(buttonRect);
+
+    // draw button picture
+
+    int x = buttonRect.left() + ((buttonRect.width() - mImage.width()) / 2);
+    int y = buttonRect.top() + ((buttonRect.height() - mImage.height()) / 2);
+
+    if (!hovered)
+        painter->setOpacity(0.3);
+    painter->drawImage(x, y, mImage);
+
+    painter->restore();
+}
+
+bool ComboBoxClickableItemDelegate::editorEvent(QEvent *event, QAbstractItemModel *model, const QStyleOptionViewItem &option, const QModelIndex &index)
+{
+    if (mButtonSize && event->type() == QEvent::MouseMove) {
+        QMouseEvent* e = static_cast<QMouseEvent*>(event);
+        int idx = e->pos().x() < option.rect.right() - mButtonSize ? QModelIndex().row() : index.row();
+        if (idx != mHovered) {
+            mHovered = idx;
+            mCombo->view()->viewport()->repaint();
+        }
+    }
+
+    if (mButtonSize && event->type() == QEvent::MouseButtonPress) {
+        QMouseEvent* e = static_cast<QMouseEvent*>(event);
+        if (e->buttons() & Qt::LeftButton) {
+            int idx = e->pos().x() < option.rect.right() - mButtonSize ? QModelIndex().row() : index.row();
+            emit buttonPressed(idx);
+            return true;
+        }
+    }
+
+    return Super::editorEvent(event, model, option, index);
+}
+
+bool ComboBoxClickableItemDelegate::eventFilter(QObject *object, QEvent *event)
+{
+    if (event->type() == QEvent::Hide)
+        mHovered = -1;
+    return Super::eventFilter(object, event);
+}
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -94,6 +176,11 @@ MainWindow::MainWindow(QWidget *parent)
     , mMapModel(new MapPhotoListModel)
 {
     ui->setupUi(this);
+
+    auto comboDelegate = new ComboBoxClickableItemDelegate(QImage(":/cross-small.png"), ui->root);
+    ui->root->setItemDelegate(comboDelegate);
+    connect(comboDelegate, &ComboBoxClickableItemDelegate::buttonPressed, ui->root, &QComboBox::removeItem);
+
     ui->tree->setItemDelegateForColumn(FileTreeModel::COLUMN_COORDS, new GeoCoordinateDelegate(this));
     ui->tree->setModel(mTreeModel);
     connect(ui->tree->selectionModel(), &QItemSelectionModel::currentRowChanged, this, [this](const QModelIndex& idx){
@@ -190,7 +277,10 @@ void MainWindow::loadSettings()
     settings.window.verticalSplitter.state.restore(ui->verticalSplitter);
     settings.window.header.state.restore(ui->tree->header());
 
-    ui->root->setText(settings.dirs.root(""));
+    using QSP = QStandardPaths;
+
+    setHistory(settings.dirs.history);
+    ui->root->setCurrentText(settings.dirs.root(QSP::writableLocation(QSP::PicturesLocation)));
     ui->filter->setText(settings.filter("*.jpg;*.jpeg"));
 }
 
@@ -204,7 +294,8 @@ void MainWindow::saveSettings()
     settings.window.verticalSplitter.state.save(ui->verticalSplitter);
     settings.window.header.state.save(ui->tree->header());
 
-    settings.dirs.root = ui->root->text();
+    settings.dirs.history = history();
+    settings.dirs.root = ui->root->currentText();
     settings.filter = ui->filter->text();
 
     if (mKeywordsDialog)
@@ -305,16 +396,36 @@ void MainWindow::selectPicture(const QString& path)
     ui->picture->setPixmap(Pics::fromImageReader(&reader, orientation));
 }
 
+QStringList MainWindow::history() const
+{
+    QStringList hist;
+    for (int i = 0; i < ui->root->count(); ++i)
+        if (!hist.contains(ui->root->itemText(i), Qt::CaseInsensitive)) // TODO QtCompat::CaseInsensitive
+            hist.append(ui->root->itemText(i));
+    return hist;
+}
+
+void MainWindow::setHistory(const QStringList& history)
+{
+    QSignalBlocker lock(ui->root);
+
+    QString text = ui->root->currentText();
+    ui->root->clear();
+    ui->root->addItems(history);
+    ui->root->setCurrentText(text);
+}
+
 void MainWindow::on_pickRoot_clicked()
 {
     Settings settings;
 
-    QString root = settings.dirs.root;
+    QString root = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
+    root = settings.dirs.root(root);
     root = QFileDialog::getExistingDirectory(this, tr("Select root path"), root);
     if (root.isEmpty())
         return;
 
-    ui->root->setText(root);
+    ui->root->setCurrentText(root);
 }
 
 void MainWindow::on_keywords_clicked()
@@ -332,13 +443,23 @@ void MainWindow::on_keywords_clicked()
     mKeywordsDialog->show();
 }
 
-void MainWindow::on_root_textChanged(const QString& text)
+static QStringList uconcat(const QString& text, QStringList list) {
+    list.removeAll(text);
+    list.prepend(text);
+    return list;
+}
+
+void MainWindow::on_root_currentTextChanged(const QString& text)
 {
+    QFileInfo dir(text);
+    if (!dir.isDir() || !dir.exists())
+        return;
+
     mTreeModel->setRootPath(text);
     ui->tree->setRootIndex(mTreeModel->index(text));
     mMapModel->clear();
+    setHistory(uconcat(text, history()));
 }
-
 
 void MainWindow::on_filter_textChanged(const QString& text)
 {
