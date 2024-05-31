@@ -90,7 +90,7 @@ public:
     }
 };
 
-ComboBoxClickableItemDelegate::ComboBoxClickableItemDelegate(const QImage& buttonImage, QComboBox* parent)
+ItemButtonDelegate::ItemButtonDelegate(const QImage& buttonImage, QComboBox* parent)
     : Super(parent)
     , mCombo(parent)
     , mImage(buttonImage)
@@ -101,7 +101,7 @@ ComboBoxClickableItemDelegate::ComboBoxClickableItemDelegate(const QImage& butto
     mButtonSize = std::max(mButtonSize, mImage.height());
 }
 
-void ComboBoxClickableItemDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const
+void ItemButtonDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const
 {
     QStyleOptionViewItem opt = setOptions(index, option);
     mButtonSize = std::max(mButtonSize, opt.rect.height());
@@ -139,7 +139,13 @@ void ComboBoxClickableItemDelegate::paint(QPainter* painter, const QStyleOptionV
     painter->restore();
 }
 
-bool ComboBoxClickableItemDelegate::editorEvent(QEvent *event, QAbstractItemModel *model, const QStyleOptionViewItem &option, const QModelIndex &index)
+QSize ItemButtonDelegate::sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const
+{
+    QSize size = Super::sizeHint(option, index);
+    return QSize(std::max(size.width(), mButtonSize), std::max(size.height(), mButtonSize));
+}
+
+bool ItemButtonDelegate::editorEvent(QEvent *event, QAbstractItemModel* model, const QStyleOptionViewItem& option, const QModelIndex& index)
 {
     if (mButtonSize && event->type() == QEvent::MouseMove) {
         QMouseEvent* e = static_cast<QMouseEvent*>(event);
@@ -162,7 +168,7 @@ bool ComboBoxClickableItemDelegate::editorEvent(QEvent *event, QAbstractItemMode
     return Super::editorEvent(event, model, option, index);
 }
 
-bool ComboBoxClickableItemDelegate::eventFilter(QObject *object, QEvent *event)
+bool ItemButtonDelegate::eventFilter(QObject *object, QEvent *event)
 {
     if (event->type() == QEvent::Hide)
         mHovered = -1;
@@ -177,9 +183,9 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
-    auto comboDelegate = new ComboBoxClickableItemDelegate(QImage(":/cross-small.png"), ui->root);
+    auto comboDelegate = new ItemButtonDelegate(QImage(":/cross-small.png"), ui->root);
     ui->root->setItemDelegate(comboDelegate);
-    connect(comboDelegate, &ComboBoxClickableItemDelegate::buttonPressed, ui->root, &QComboBox::removeItem);
+    connect(comboDelegate, &ItemButtonDelegate::buttonPressed, ui->root, &QComboBox::removeItem);
 
     ui->tree->setItemDelegateForColumn(FileTreeModel::COLUMN_COORDS, new GeoCoordinateDelegate(this));
     ui->tree->setModel(mTreeModel);

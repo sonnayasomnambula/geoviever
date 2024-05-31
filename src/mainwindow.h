@@ -29,7 +29,7 @@ public:
 private:
     QListView* mView = nullptr;
     QStringListModel* mModel = nullptr;
-class ComboBoxClickableItemDelegate : public QItemDelegate
+class ItemButtonDelegate : public QItemDelegate
 {
     using Super = QItemDelegate;
 
@@ -39,10 +39,12 @@ signals:
     void buttonPressed(int index);
 
 public:
-    ComboBoxClickableItemDelegate(const QImage& buttonImage, QComboBox* parent);
+    ItemButtonDelegate(const QImage& buttonImage, QComboBox* parent);
     void paint(QPainter* painter,
                const QStyleOptionViewItem& option,
                const QModelIndex& index) const override;
+    QSize sizeHint(const QStyleOptionViewItem& option,
+                   const QModelIndex& index) const override;
     bool editorEvent(QEvent* event,
                      QAbstractItemModel* model,
                      const QStyleOptionViewItem& option,
