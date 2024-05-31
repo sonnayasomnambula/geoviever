@@ -48,6 +48,7 @@ signals:
     void parse(const QString& file);
     void ready(const QSharedPointer<Photo>& photo);
     void remains(int count);
+    void keywordAdded(const QString& keyword, int count);
 
 public:
     static ExifStorage* instance();
@@ -57,7 +58,9 @@ public:
     Q_DECL_DEPRECATED static QPointF coords(const QString& path);
 
     static QStringList keywords();
+    static QStringList keywords(const QString& file);
     static QStringList byKeyword(const QString& keyword);
+    static int count(const QString& keyword);
 
 private:
     ExifStorage();

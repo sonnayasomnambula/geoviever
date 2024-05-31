@@ -9,6 +9,7 @@ SOURCES += \
     src/exif/file.cpp \
     src/exif/utils.cpp \
     src/exifstorage.cpp \
+    src/keywordsdialog.cpp \
     src/main.cpp \
     src/mainwindow.cpp \
     src/model.cpp \
@@ -20,10 +21,12 @@ HEADERS += \
     src/exif/file.h \
     src/exif/utils.h \
     src/exifstorage.h \
+    src/keywordsdialog.h \
     src/mainwindow.h \
     src/model.h \
     src/pics.h \
     src/pixmaplabel.h \
+    src/qtcompat.h \
     src/tooltip.h
 
 FORMS += \

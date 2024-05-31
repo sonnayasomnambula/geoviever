@@ -1,7 +1,6 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
-#include <QDialog>
 #include <QImage>
 #include <QItemDelegate>
 #include <QMainWindow>
@@ -12,23 +11,13 @@ class MainWindow;
 }
 
 class QComboBox;
-class QListView;
 class QStringListModel;
 QT_END_NAMESPACE
 
 class FileTreeModel;
+class KeywordsDialog;
 class MapPhotoListModel;
 
-class KeywordsDialog : public QDialog
-{
-public:
-    explicit KeywordsDialog(QWidget *parent = nullptr);
-
-    void setKeywords(const QStringList& keywords);
-
-private:
-    QListView* mView = nullptr;
-    QStringListModel* mModel = nullptr;
 class ItemButtonDelegate : public QItemDelegate
 {
     using Super = QItemDelegate;

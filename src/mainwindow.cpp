@@ -1,11 +1,9 @@
 #include <QAbstractTableModel>
-#include <QBoxLayout>
 #include <QDesktopWidget>
 #include <QFileDialog>
 #include <QFileSystemModel>
 #include <QGeoCoordinate>
 #include <QImageReader>
-#include <QListView>
 #include <QPainter>
 #include <QQmlContext>
 #include <QQmlEngine>
@@ -26,29 +24,13 @@
 
 #include "abstractsettings.h"
 #include "exifstorage.h"
+#include "keywordsdialog.h"
 #include "model.h"
 #include "mainwindow.h"
 #include "pics.h"
+#include "qtcompat.h"
 #include "tooltip.h"
 #include "ui_mainwindow.h"
-
-KeywordsDialog::KeywordsDialog(QWidget* parent)
-    : QDialog(parent)
-    , mView(new QListView(this))
-    , mModel(new QStringListModel(this))
-{
-    mView->setModel(mModel);
-
-    auto lay = new QVBoxLayout(this);
-    lay->setContentsMargins({});
-    lay->addWidget(mView);
-}
-
-void KeywordsDialog::setKeywords(const QStringList& keywords)
-{
-    if (mModel->stringList() != keywords)
-        mModel->setStringList(keywords);
-}
 
 struct Settings : AbstractSettings
 {
@@ -423,10 +405,7 @@ void MainWindow::setHistory(const QStringList& history)
 
 void MainWindow::on_pickRoot_clicked()
 {
-    Settings settings;
-
-    QString root = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
-    root = settings.dirs.root(root);
+    QString root = ui->root->currentText();
     root = QFileDialog::getExistingDirectory(this, tr("Select root path"), root);
     if (root.isEmpty())
         return;
@@ -443,7 +422,55 @@ void MainWindow::on_keywords_clicked()
         mKeywordsDialog = new KeywordsDialog(this);
         settings.keywordDialog.geometry.restore(mKeywordsDialog);
 
-        mKeywordsDialog->setKeywords(ExifStorage::keywords());
+        connect(ExifStorage::instance(), &ExifStorage::keywordAdded, mKeywordsDialog->model(), &KeywordsModel::add);
+        mKeywordsDialog->model()->clear();
+        for (const QString& keyword: ExifStorage::keywords())
+            mKeywordsDialog->model()->add(keyword, ExifStorage::count(keyword));
+        mKeywordsDialog->view()->resizeColumnToContents(KeywordsModel::COLUMN_KEYWORD); // QHeaderView::ResizeMode doesn't seem to work
+        mKeywordsDialog->view()->resizeColumnToContents(KeywordsModel::COLUMN_KEYWORD_COUNT); // TODO incapsulate this
+
+        connect(mKeywordsDialog, &KeywordsDialog::checkChanged, this, [this](const QString& keyword){
+            QSet<QString> keywords = QtCompat::toSet(mKeywordsDialog->model()->values(Qt::Checked));
+            QMap<QString, QModelIndex> indexes;
+
+            // 1. uncheck checked
+            for (const QModelIndex& tid: Checker::children(mTreeModel, Qt::Checked, ui->tree->rootIndex()))
+                indexes[mTreeModel->filePath(tid)] = tid;
+
+            // 2. check unchecked
+            for (const QString& file: ExifStorage::byKeyword(keyword)) {
+                QModelIndex tid = mTreeModel->index(file);
+                if (tid.isValid()) {
+                    indexes[file] = tid;
+                }
+            }
+
+            for (auto i = indexes.cbegin(); i != indexes.cend(); ++i) {
+                const auto& file = i.key();
+                const auto& tid = i.value();
+                Qt::CheckState state = keywords.intersects(QtCompat::toSet(ExifStorage::keywords(file))) ? Qt::Checked : Qt::Unchecked;
+                mTreeModel->setData(tid, state, Qt::CheckStateRole);
+            }
+        });
+
+        /*
+        auto applyKeywords = [this](const QModelIndex& current) {
+            QString path = mTreeModel->filePath(current);
+            QStringList keywords;
+            if (auto photo = ExifStorage::data(path))
+                keywords = photo->keywords.split(';');
+            else
+                keywords = Exif::File(path, false).value(EXIF_IFD_0, EXIF_TAG_XP_KEYWORDS).toString().split(';');
+            for (QString& s: keywords)
+                s = s.trimmed();
+            mKeywordsDialog->setChecked(keywords);
+        };
+        connect(ui->tree->selectionModel(), &QItemSelectionModel::currentChanged, this, applyKeywords);
+
+        QModelIndex current = ui->tree->currentIndex();
+        if (current.isValid())
+            applyKeywords(current);
+        */
     }
 
     mKeywordsDialog->show();

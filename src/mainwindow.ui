@@ -41,6 +41,13 @@
            </widget>
           </item>
           <item>
+           <widget class="QToolButton" name="pickRoot">
+            <property name="text">
+             <string>...</string>
+            </property>
+           </widget>
+          </item>
+          <item>
            <widget class="QLineEdit" name="filter">
             <property name="enabled">
              <bool>false</bool>
@@ -53,13 +60,6 @@
             </property>
             <property name="text">
              <string/>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QToolButton" name="pickRoot">
-            <property name="text">
-             <string>...</string>
             </property>
            </widget>
           </item>

@@ -11,6 +11,7 @@
 
 struct Photo;
 
+
 class Bubbles
 {
     QHash<int, QString> mData;
@@ -26,6 +27,9 @@ public:
 
 class Checker
 {
+public:
+    static QModelIndexList children(const QAbstractItemModel* model, Qt::CheckState state, const QModelIndex& parent = {});
+
 protected:
     Qt::ItemFlags flags(const QModelIndex& index) const;
     QVariant checkState(const QModelIndex& index) const;

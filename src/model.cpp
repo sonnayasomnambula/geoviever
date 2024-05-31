@@ -26,6 +26,19 @@ bool operator !=(const Photo& L, const Photo& R)
     return !(L == R);
 }
 
+QModelIndexList Checker::children(const QAbstractItemModel* model, Qt::CheckState state, const QModelIndex& parent)
+{
+    QModelIndexList list;
+    for (int r = 0; r < model->rowCount(parent); ++r) {
+        QModelIndex i = model->index(r, 0, parent);
+        if (i.data(Qt::CheckStateRole).toInt() == state)
+            list.append(i);
+        if (model->rowCount(i))
+            list.append(children(model, state, i));
+    }
+    return list;
+}
+
 Qt::ItemFlags Checker::flags(const QModelIndex& index) const
 {
     return index.column() == 0 ? Qt::ItemIsUserCheckable : Qt::NoItemFlags;

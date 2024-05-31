@@ -70,21 +70,35 @@ ExifStorage::~ExifStorage()
 void ExifStorage::add(const QSharedPointer<Photo>& photo)
 {
     int rest = 0;
+    QMap<QString, int> keywords;
 
     {
         QMutexLocker lock(&mMutex);
         mData[photo->path] = photo;
 
         if (!photo->keywords.isEmpty())
+        {
             for (const QString& keyword: photo->keywords.split(';'))
-                mKeywords[keyword.trimmed()].insert(photo->path);
+            {
+                QSet<QString>& files = mKeywords[keyword.trimmed()];
+                bool empty = files.isEmpty();
+                files.insert(photo->path);
+
+                if (empty || keywords.contains(keyword))
+                    keywords[keyword] = files.size();
+            }
+        }
 
         mInProgress.remove(photo->path);
         rest = mInProgress.size();
+
+
     }
 
     emit ready(photo);
-    emit remains(rest);
+    emit remains(rest);    
+    for (auto i = keywords.cbegin(); i != keywords.cend(); ++i)
+        emit keywordAdded(i.key(), i.value());
 }
 
 void ExifStorage::fail(const QString& path)
@@ -156,9 +170,31 @@ QStringList ExifStorage::keywords()
     return storage->mKeywords.keys();
 }
 
+QStringList ExifStorage::keywords(const QString& file)
+{
+    QString string;
+    if (auto photo = data(file))
+        string = photo->keywords;
+    else
+        string = Exif::File(file, false).value(EXIF_IFD_0, EXIF_TAG_XP_KEYWORDS).toString();
+
+    QStringList keywords;
+    if (!string.isEmpty())
+        for (QString& s: string.split(';'))
+            keywords.append(s.trimmed());
+    return keywords;
+}
+
 QStringList ExifStorage::byKeyword(const QString& keyword)
 {
     auto storage = instance();
     QMutexLocker lock(&storage->mMutex);
     return storage->mKeywords.value(keyword).values();
+}
+
+int ExifStorage::count(const QString& keyword)
+{
+    auto storage = instance();
+    QMutexLocker lock(&storage->mMutex);
+    return storage->mKeywords.value(keyword).size();
 }
