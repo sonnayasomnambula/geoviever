@@ -4,7 +4,9 @@
 #include <QFileSystemModel>
 #include <QGeoCoordinate>
 #include <QImageReader>
+#include <QMessageBox>
 #include <QPainter>
+#include <QPushButton>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQmlError>
@@ -164,6 +166,7 @@ MainWindow::MainWindow(QWidget *parent)
     , mMapModel(new MapPhotoListModel)
 {
     ui->setupUi(this);
+    ui->tree->addActions({ ui->actionCheck, ui->actionUncheck, ui->actionEditKeywords });
 
     auto comboDelegate = new ItemButtonDelegate(QImage(":/cross-small.png"), ui->root);
     ui->root->setItemDelegate(comboDelegate);
@@ -207,6 +210,10 @@ MainWindow::MainWindow(QWidget *parent)
     });
     connect(ui->map, &QQuickWidget::sceneGraphError, [this](QQuickWindow::SceneGraphError, const QString& message){
         qWarning() << "SceneGraphError" << message;
+    });
+
+    connect(mTreeModel, &FileTreeModel::fileRenamed, this, [this](const QString& path, const QString& oldName, const QString& newName){
+        // TODO
     });
 
     connect(mTreeModel, &FileTreeModel::inserted, mMapModel, &MapPhotoListModel::insert);
@@ -286,8 +293,8 @@ void MainWindow::saveSettings()
     settings.dirs.root = ui->root->currentText();
     settings.filter = ui->filter->text();
 
-    if (mKeywordsDialog)
-        settings.keywordDialog.geometry.save(mKeywordsDialog);
+    if (auto dialog = keywordsDialog(CreateOption::Never))
+        settings.keywordDialog.geometry.save(dialog);
 }
 
 static QRect getRectToShow(QTableView* t, QAbstractItemModel* m, const QPoint& pos)
@@ -403,6 +410,124 @@ void MainWindow::setHistory(const QStringList& history)
     ui->root->setCurrentText(text);
 }
 
+KeywordsDialog* MainWindow::keywordsDialog(CreateOption createOption)
+{
+    static KeywordsDialog* dialog = nullptr;
+    if (dialog || createOption == CreateOption::Never)
+        return dialog;
+
+    Settings settings;
+
+    dialog = new KeywordsDialog(this);
+    settings.keywordDialog.geometry.restore(dialog);
+
+    connect(ExifStorage::instance(), &ExifStorage::keywordAdded, this, [this](const QString& keyword, int count){
+            dialog->model()->add(keyword, count); });
+    dialog->model()->clear();
+    for (const QString& keyword: ExifStorage::keywords())
+        dialog->model()->add(keyword, ExifStorage::count(keyword));
+    dialog->view()->resizeColumnToContents(KeywordsModel::COLUMN_KEYWORD); // QHeaderView::ResizeMode doesn't seem to work
+    dialog->view()->resizeColumnToContents(KeywordsModel::COLUMN_KEYWORD_COUNT); // TODO incapsulate this
+
+    connect(dialog, &KeywordsDialog::checkChanged, this, &MainWindow::keywordChecked);
+    connect(ui->tree->selectionModel(), &QItemSelectionModel::selectionChanged, this, &MainWindow::updateKeywordsDialog);
+    connect(dialog, &KeywordsDialog::apply, this, &MainWindow::saveKeywords);
+
+    if (ui->tree->selectionModel()->hasSelection())
+        updateKeywordsDialog();
+
+    return dialog;
+}
+
+void MainWindow::keywordChecked(const QString& keyword, Qt::CheckState)
+{
+    if (keywordsDialog()->mode() == KeywordsDialog::Mode::Filter) {
+        QSet<QString> keywords = QtCompat::toSet(keywordsDialog()->model()->values(Qt::Checked));
+        QMap<QString, QModelIndex> indexes;
+
+        // 1. uncheck checked
+        for (const QModelIndex& tid: Checker::children(mTreeModel, Qt::Checked, ui->tree->rootIndex()))
+            indexes[mTreeModel->filePath(tid)] = tid;
+
+        // 2. check unchecked
+        for (const QString& file: ExifStorage::byKeyword(keyword)) {
+            QModelIndex tid = mTreeModel->index(file);
+            if (tid.isValid()) {
+                indexes[file] = tid;
+            }
+        }
+
+        for (auto i = indexes.cbegin(); i != indexes.cend(); ++i) {
+            const auto& file = i.key();
+            const auto& tid = i.value();
+            Qt::CheckState state = keywords.intersects(QtCompat::toSet(ExifStorage::keywords(file))) ? Qt::Checked : Qt::Unchecked;
+            mTreeModel->setData(tid, state, Qt::CheckStateRole);
+        }
+    }
+}
+
+void MainWindow::updateKeywordsDialog()
+{
+    if (keywordsDialog()->mode() == KeywordsDialog::Mode::Edit) {
+
+        QSet<QString> common, partially;
+
+        for (const auto& index: ui->tree->selectionModel()->selectedRows()) {
+            if (mTreeModel->isDir(index)) continue;
+            QString path = mTreeModel->filePath(index);
+            QString keywordsTag;
+            if (auto photo = ExifStorage::data(path))
+                keywordsTag = photo->keywords;
+            else
+                keywordsTag = Exif::File(path, false).value(EXIF_IFD_0, EXIF_TAG_XP_KEYWORDS).toString();
+
+            QSet<QString> keywords;
+
+            for (QString& s: keywordsTag.split(';'))
+                keywords.insert(s.trimmed());
+
+            if (common.isEmpty() && partially.isEmpty()) {
+                common = keywords;
+            } else {
+                common.intersect(keywords);
+                partially = (common | partially | keywords) - common;
+            }
+        }
+
+        keywordsDialog()->model()->setChecked(common, partially);
+        keywordsDialog()->button(KeywordsDialog::Button::Apply)->setEnabled(false);
+    }
+}
+
+void MainWindow::saveKeywords()
+{
+    auto selection = ui->tree->selectionModel()->selectedRows();
+    if (selection.isEmpty() || QMessageBox::question(this, "", tr("Overwrite %1 file(s)?").arg(selection.size())) != QMessageBox::Yes)
+        return;
+
+    for (const auto& index: selection) {
+        if (mTreeModel->isDir(index)) continue;
+        QString path = mTreeModel->filePath(index);
+        Exif::File file;
+        if (!file.load(path)) {
+            QMessageBox::warning(this, "", tr("Load '%1' failed: %2").arg(path, file.errorString()));
+            return;
+        }
+
+        file.setValue(EXIF_IFD_0, EXIF_TAG_XP_KEYWORDS, keywordsDialog()->model()->values(Qt::Checked).join(';'));
+
+        if (!file.save(path)) {
+            QMessageBox::warning(this, "", tr("Save '%1' failed: %2").arg(path, file.errorString()));
+            return;
+        }
+
+        ExifStorage::instance()->parse(path);
+    }
+
+    keywordsDialog()->button(KeywordsDialog::Button::Apply)->setEnabled(false);
+    keywordsDialog()->model()->setExtraFlags(Qt::NoItemFlags); // reset
+}
+
 void MainWindow::on_pickRoot_clicked()
 {
     QString root = ui->root->currentText();
@@ -415,65 +540,7 @@ void MainWindow::on_pickRoot_clicked()
 
 void MainWindow::on_keywords_clicked()
 {
-    if (!mKeywordsDialog)
-    {
-        Settings settings;
-
-        mKeywordsDialog = new KeywordsDialog(this);
-        settings.keywordDialog.geometry.restore(mKeywordsDialog);
-
-        connect(ExifStorage::instance(), &ExifStorage::keywordAdded, mKeywordsDialog->model(), &KeywordsModel::add);
-        mKeywordsDialog->model()->clear();
-        for (const QString& keyword: ExifStorage::keywords())
-            mKeywordsDialog->model()->add(keyword, ExifStorage::count(keyword));
-        mKeywordsDialog->view()->resizeColumnToContents(KeywordsModel::COLUMN_KEYWORD); // QHeaderView::ResizeMode doesn't seem to work
-        mKeywordsDialog->view()->resizeColumnToContents(KeywordsModel::COLUMN_KEYWORD_COUNT); // TODO incapsulate this
-
-        connect(mKeywordsDialog, &KeywordsDialog::checkChanged, this, [this](const QString& keyword){
-            QSet<QString> keywords = QtCompat::toSet(mKeywordsDialog->model()->values(Qt::Checked));
-            QMap<QString, QModelIndex> indexes;
-
-            // 1. uncheck checked
-            for (const QModelIndex& tid: Checker::children(mTreeModel, Qt::Checked, ui->tree->rootIndex()))
-                indexes[mTreeModel->filePath(tid)] = tid;
-
-            // 2. check unchecked
-            for (const QString& file: ExifStorage::byKeyword(keyword)) {
-                QModelIndex tid = mTreeModel->index(file);
-                if (tid.isValid()) {
-                    indexes[file] = tid;
-                }
-            }
-
-            for (auto i = indexes.cbegin(); i != indexes.cend(); ++i) {
-                const auto& file = i.key();
-                const auto& tid = i.value();
-                Qt::CheckState state = keywords.intersects(QtCompat::toSet(ExifStorage::keywords(file))) ? Qt::Checked : Qt::Unchecked;
-                mTreeModel->setData(tid, state, Qt::CheckStateRole);
-            }
-        });
-
-        /*
-        auto applyKeywords = [this](const QModelIndex& current) {
-            QString path = mTreeModel->filePath(current);
-            QStringList keywords;
-            if (auto photo = ExifStorage::data(path))
-                keywords = photo->keywords.split(';');
-            else
-                keywords = Exif::File(path, false).value(EXIF_IFD_0, EXIF_TAG_XP_KEYWORDS).toString().split(';');
-            for (QString& s: keywords)
-                s = s.trimmed();
-            mKeywordsDialog->setChecked(keywords);
-        };
-        connect(ui->tree->selectionModel(), &QItemSelectionModel::currentChanged, this, applyKeywords);
-
-        QModelIndex current = ui->tree->currentIndex();
-        if (current.isValid())
-            applyKeywords(current);
-        */
-    }
-
-    mKeywordsDialog->show();
+    keywordsDialog()->show();
 }
 
 static QStringList uconcat(const QString& text, QStringList list) {
@@ -509,3 +576,29 @@ void MainWindow::on_tree_doubleClicked(const QModelIndex& index)
         mMapModel->setCenter(coords);
     }
 }
+
+void MainWindow::on_actionCheck_triggered()
+{
+    for (const auto& tid: ui->tree->selectionModel()->selectedRows())
+        mTreeModel->setData(tid, Qt::Checked, Qt::CheckStateRole);
+}
+
+
+void MainWindow::on_actionUncheck_triggered()
+{
+    for (const auto& tid: ui->tree->selectionModel()->selectedRows())
+        mTreeModel->setData(tid, Qt::Unchecked, Qt::CheckStateRole);
+}
+
+void MainWindow::on_actionEditKeywords_triggered(bool checked)
+{
+    keywordsDialog()->setMode(checked ? KeywordsDialog::Mode::Edit : KeywordsDialog::Mode::Filter);
+
+    if (keywordsDialog()->mode() == KeywordsDialog::Mode::Filter)
+        keywordsDialog()->model()->setChecked({}, {});
+    else
+        updateKeywordsDialog();
+
+    keywordsDialog()->show();
+}
+

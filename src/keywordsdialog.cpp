@@ -50,7 +50,8 @@ QModelIndex KeywordsModel::parent(const QModelIndex& /*index*/) const
 
 Qt::ItemFlags KeywordsModel::flags(const QModelIndex& index) const
 {
-    return Super::flags(index) | Qt::ItemIsUserCheckable;
+    Qt::ItemFlags extraFlags = index.row() < rowCount(index.parent()) ? mData[index.row()].extraFlags : Qt::NoItemFlags;
+    return Super::flags(index) | Qt::ItemIsUserCheckable | extraFlags;
 }
 
 QVariant KeywordsModel::data(const QModelIndex& index, int role) const
@@ -88,13 +89,6 @@ bool KeywordsModel::setData(const QModelIndex& index, const QVariant& value, int
     return ok;
 }
 
-void KeywordsModel::add(const QString &keyword, int count)
-{
-    beginInsertRows({}, rowCount(), rowCount());
-    mData.append({ keyword, Qt::Unchecked, count });
-    endInsertRows();
-}
-
 void KeywordsModel::clear()
 {
     if (mData.isEmpty()) return;
@@ -104,6 +98,27 @@ void KeywordsModel::clear()
     endResetModel();
 }
 
+QModelIndex KeywordsModel::add(const QString &keyword, int count, Qt::ItemFlags extraFlags)
+{
+    for (int i = 0; i < mData.size(); ++i)
+        if (mData[i].keyword == keyword)
+            return {};
+
+    const int row = rowCount();
+
+    beginInsertRows({}, row, row);
+    mData.append({ keyword, Qt::Unchecked, count, extraFlags });
+    endInsertRows();
+
+    return index(row, 0);
+}
+
+void KeywordsModel::setExtraFlags(Qt::ItemFlags flags)
+{
+    for (Data& data : mData)
+        data.extraFlags = flags;
+}
+
 QStringList KeywordsModel::values(Qt::CheckState state) const
 {
     QStringList values;
@@ -111,6 +126,42 @@ QStringList KeywordsModel::values(Qt::CheckState state) const
         if (data.checkState == state)
             values.append(data.keyword);
     return values;
+}
+
+void KeywordsModel::setChecked(const QSet<QString>& checked, const QSet<QString>& partiallyChecked)
+{
+    // I don't think the KeywordsModel will ever become hierarchical
+    for (int row = 0; row < rowCount(); ++row)
+    {
+        // for (int col = 0; col < mModel->columnCount(); ++col)
+        const int col = 0;
+        {
+            QModelIndex idx = index(row, col);
+            QString keyword = data(idx).toString();
+            setData(idx,
+                    checked.contains(keyword) ? Qt::Checked :
+                        partiallyChecked.contains(keyword) ? Qt::PartiallyChecked : Qt::Unchecked,
+                    Qt::CheckStateRole);
+        }
+    }
+}
+
+void KeywordsDialog::setMode(Mode mode)
+{
+    if (mode != mMode)
+    {
+        mMode = mode;
+
+        mView->setColumnHidden(KeywordsModel::COLUMN_KEYWORD_COUNT, mMode == Mode::Edit);
+
+        mAdd->setVisible(mMode == Mode::Edit);
+        mApply->setVisible(mMode == Mode::Edit);
+    }
+}
+
+QPushButton* KeywordsDialog::button(Button button)
+{
+    return button == Button::Add ? mAdd : mApply;
 }
 
 KeywordsDialog::KeywordsDialog(QWidget* parent)
@@ -141,7 +192,14 @@ KeywordsDialog::KeywordsDialog(QWidget* parent)
                 auto checkState = mModel->data(kid, Qt::CheckStateRole).toInt();
                 emit checkChanged(keyword, static_cast<Qt::CheckState>(checkState));
             }
+            mApply->setEnabled(true); // TODO check ExifStorage::keywords() == model->keywords()
         }
+    });
+
+    connect(mApply, &QPushButton::clicked, this, &KeywordsDialog::apply);
+
+    connect(mAdd, &QPushButton::clicked, this, [this]{
+        view()->edit(model()->add("", 0, Qt::ItemIsEditable));
     });
 
     auto lay = new QVBoxLayout(this);
@@ -164,21 +222,6 @@ KeywordsDialog::KeywordsDialog(QWidget* parent)
     mApply->hide();
 
     setWindowTitle(tr("Keywords"));
-}
 
-/*
-void KeywordsDialog::setChecked(const QStringList& keywords)
-{
-    // I don't think the KeywordsModel will ever become hierarchical
-    for (int row = 0; row < mModel->rowCount(); ++row)
-    {
-        // for (int col = 0; col < mModel->columnCount(); ++col)
-        const int col = 0;
-        {
-            QModelIndex idx = mModel->index(row, col);
-            QString keyword = mModel->data(idx).toString();
-            mModel->setData(idx, keywords.contains(keyword) ? Qt::Checked : Qt::Unchecked, Qt::CheckStateRole);
-        }
-    }
+    setMode(Mode::Filter);
 }
-*/

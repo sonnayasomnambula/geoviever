@@ -103,8 +103,7 @@ FileTreeModel::FileTreeModel(QObject *parent)
     connect(ExifStorage::instance(), &ExifStorage::ready, this, [this](const QSharedPointer<Photo>& photo){
         QModelIndex i = index(photo->path);
         if (i.isValid()) {
-            i = i.siblingAtColumn(COLUMN_COORDS);
-            emit dataChanged(i, i, { Qt::DisplayRole });
+            emit dataChanged(i.siblingAtColumn(COLUMN_COORDS), i.siblingAtColumn(COLUMN_KEYWORDS), { Qt::DisplayRole });
         }
     });
 }

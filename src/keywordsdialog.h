@@ -31,10 +31,12 @@ public:
     QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
     bool setData(const QModelIndex& index, const QVariant& value, int role) override;
 
-    void add(const QString& keyword, int count);
     void clear();
+    QModelIndex add(const QString& keyword, int count = 0, Qt::ItemFlags extraFlags = Qt::NoItemFlags);
+    void setExtraFlags(Qt::ItemFlags flags);
 
     QStringList values(Qt::CheckState state) const;
+    void setChecked(const QSet<QString>& checked, const QSet<QString>& partiallyChecked);
 
 private:
     struct Data
@@ -42,6 +44,7 @@ private:
         QString keyword;
         Qt::CheckState checkState = Qt::Unchecked;
         int count = 0;
+        Qt::ItemFlags extraFlags = Qt::NoItemFlags;
     };
 
     QVector<Data> mData;
@@ -54,14 +57,20 @@ class KeywordsDialog : public QDialog
 
 signals:
     void checkChanged(const QString& keyword, Qt::CheckState state);
+    void apply();
 
 public:
     explicit KeywordsDialog(QWidget *parent = nullptr);
 
-    // void setChecked(const QStringList& keywords);
+    enum class Mode { Filter, Edit };
+    void setMode(Mode mode);
+    Mode mode() const { return mMode; }
 
     QTreeView* view() const { return mView; }
     KeywordsModel* model() const { return mModel; }
+
+    enum class Button { Add, Apply };
+    QPushButton* button(Button button);
 
 private:
     QTreeView* mView = nullptr;
@@ -69,6 +78,8 @@ private:
 
     QPushButton* mAdd = nullptr;
     QPushButton* mApply = nullptr;
+
+    Mode mMode = Mode::Edit;
 };
 
 #endif // KEYWORDSDIALOG_H

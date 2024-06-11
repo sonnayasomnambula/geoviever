@@ -72,6 +72,12 @@ private:
     QStringList history() const;
     void setHistory(const QStringList& history);
 
+    enum class CreateOption { Never, IfNotExists };
+    KeywordsDialog* keywordsDialog(CreateOption createOption = CreateOption::IfNotExists);
+    void keywordChecked(const QString& keyword, Qt::CheckState state);
+    void updateKeywordsDialog();
+    void saveKeywords();
+
 private slots:
     void on_pickRoot_clicked();
     void on_keywords_clicked();
@@ -79,11 +85,14 @@ private slots:
     void on_filter_textChanged(const QString& text);
     void on_tree_doubleClicked(const QModelIndex& index);
 
+    void on_actionCheck_triggered();
+    void on_actionUncheck_triggered();
+    void on_actionEditKeywords_triggered(bool checked);
+
 private:
     Ui::MainWindow* ui = nullptr;
     FileTreeModel*    mTreeModel = nullptr;
     MapPhotoListModel* mMapModel = nullptr;
-    KeywordsDialog* mKeywordsDialog = nullptr;
 };
 
 #endif // MAINWINDOW_H
