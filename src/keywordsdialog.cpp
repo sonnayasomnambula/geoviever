@@ -77,7 +77,7 @@ bool KeywordsModel::setData(const QModelIndex& index, const QVariant& value, int
     if (index.isValid() && index.row() < mData.size())
     {
         if ((role == Qt::DisplayRole || role == Qt::EditRole) && index.column() == COLUMN_KEYWORD)
-            mData[index.row()].keyword = value.toString(), ok = true;
+            mData[index.row()].keyword = value.toString();
         if ((role == Qt::DisplayRole || role == Qt::EditRole) && index.column() == COLUMN_KEYWORD_COUNT)
             mData[index.row()].count = value.toInt(), ok = true;
         if (role == Qt::CheckStateRole && index.column() == 0)
@@ -86,6 +86,13 @@ bool KeywordsModel::setData(const QModelIndex& index, const QVariant& value, int
 
     if (ok)
         emit dataChanged(index, index, { role });
+
+    if (role == Qt::EditRole && index.column() == COLUMN_KEYWORD) {
+        beginResetModel();
+        std::sort(mData.begin(), mData.end(), [](const Data& L, const Data& R){ return L.keyword < R.keyword; });
+        endResetModel();
+    }
+
     return ok;
 }
 
@@ -98,7 +105,7 @@ void KeywordsModel::clear()
     endResetModel();
 }
 
-QModelIndex KeywordsModel::add(const QString &keyword, int count, Qt::ItemFlags extraFlags)
+QModelIndex KeywordsModel::add(const QString& keyword, int count, Qt::ItemFlags extraFlags)
 {
     for (int i = 0; i < mData.size(); ++i)
         if (mData[i].keyword == keyword)
