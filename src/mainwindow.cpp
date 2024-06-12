@@ -1,4 +1,5 @@
 #include <QAbstractTableModel>
+#include <QCheckBox>
 #include <QDesktopWidget>
 #include <QFileDialog>
 #include <QFileSystemModel>
@@ -52,7 +53,8 @@ struct Settings : AbstractSettings
     } window;
 
     struct {
-        Geometry geometry = "keyboardDialog/geometry";
+        Geometry geometry = "keywordDialog/geometry";
+        Tag<bool> overwriteSilently = "keywordDialog/overwriteSilently";
     } keywordDialog;
 };
 
@@ -501,9 +503,21 @@ void MainWindow::updateKeywordsDialog()
 
 void MainWindow::saveKeywords()
 {
+    Settings settings;
+
     auto selection = ui->tree->selectionModel()->selectedRows();
-    if (selection.isEmpty() || QMessageBox::question(this, "", tr("Overwrite %1 file(s)?").arg(selection.size())) != QMessageBox::Yes)
+    if (selection.isEmpty())
         return;
+
+    if (!settings.keywordDialog.overwriteSilently) {
+        using QMBox = QMessageBox;
+        QMBox box(QMBox::Question, "", tr("Overwrite %1 file(s)?").arg(selection.size()), QMBox::Yes | QMBox::No, this);
+        box.setCheckBox(new QCheckBox(tr("Do not ask me next time")));
+        int ansver = box.exec();
+        settings.keywordDialog.overwriteSilently = box.checkBox()->isChecked();
+        if (ansver != QMBox::Yes)
+            return;
+    }
 
     for (const auto& index: selection) {
         if (mTreeModel->isDir(index)) continue;
