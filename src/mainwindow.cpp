@@ -214,9 +214,11 @@ MainWindow::MainWindow(QWidget *parent)
         qWarning() << "SceneGraphError" << message;
     });
 
+    /*
     connect(mTreeModel, &FileTreeModel::fileRenamed, this, [this](const QString& path, const QString& oldName, const QString& newName){
         // TODO
     });
+    */
 
     connect(mTreeModel, &FileTreeModel::inserted, mMapModel, &MapPhotoListModel::insert);
     connect(mTreeModel, &FileTreeModel::removed, mMapModel, &MapPhotoListModel::remove);
@@ -424,10 +426,10 @@ KeywordsDialog* MainWindow::keywordsDialog(CreateOption createOption)
     settings.keywordDialog.geometry.restore(dialog);
 
     connect(ExifStorage::instance(), &ExifStorage::keywordAdded, this, [this](const QString& keyword, int count){
-            dialog->model()->add(keyword, count); });
+        dialog->model()->insert(keyword, count); });
     dialog->model()->clear();
     for (const QString& keyword: ExifStorage::keywords())
-        dialog->model()->add(keyword, ExifStorage::count(keyword));
+        dialog->model()->insert(keyword, ExifStorage::count(keyword));
     dialog->view()->resizeColumnToContents(KeywordsModel::COLUMN_KEYWORD); // QHeaderView::ResizeMode doesn't seem to work
     dialog->view()->resizeColumnToContents(KeywordsModel::COLUMN_KEYWORD_COUNT); // TODO incapsulate this
 
@@ -519,6 +521,8 @@ void MainWindow::saveKeywords()
             return;
     }
 
+    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+
     for (const auto& index: selection) {
         if (mTreeModel->isDir(index)) continue;
         QString path = mTreeModel->filePath(index);
@@ -537,6 +541,8 @@ void MainWindow::saveKeywords()
 
         ExifStorage::instance()->parse(path);
     }
+
+    QGuiApplication::restoreOverrideCursor();
 
     keywordsDialog()->button(KeywordsDialog::Button::Apply)->setEnabled(false);
     keywordsDialog()->model()->setExtraFlags(Qt::NoItemFlags); // reset

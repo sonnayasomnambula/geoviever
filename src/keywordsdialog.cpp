@@ -77,7 +77,7 @@ bool KeywordsModel::setData(const QModelIndex& index, const QVariant& value, int
     if (index.isValid() && index.row() < mData.size())
     {
         if ((role == Qt::DisplayRole || role == Qt::EditRole) && index.column() == COLUMN_KEYWORD)
-            mData[index.row()].keyword = value.toString();
+            mData[index.row()].keyword = value.toString(), ok = true;
         if ((role == Qt::DisplayRole || role == Qt::EditRole) && index.column() == COLUMN_KEYWORD_COUNT)
             mData[index.row()].count = value.toInt(), ok = true;
         if (role == Qt::CheckStateRole && index.column() == 0)
@@ -87,9 +87,11 @@ bool KeywordsModel::setData(const QModelIndex& index, const QVariant& value, int
     if (ok)
         emit dataChanged(index, index, { role });
 
-    if (role == Qt::EditRole && index.column() == COLUMN_KEYWORD) {
+    if (role == Qt::EditRole && index.column() == COLUMN_KEYWORD)
+    {
         beginResetModel();
-        std::sort(mData.begin(), mData.end(), [](const Data& L, const Data& R){ return L.keyword < R.keyword; });
+        std::sort(mData.begin(), mData.end(), [](const Data& L, const Data& R){
+            return L.keyword.toUpper() < R.keyword.toUpper(); });
         endResetModel();
     }
 
@@ -105,16 +107,31 @@ void KeywordsModel::clear()
     endResetModel();
 }
 
-QModelIndex KeywordsModel::add(const QString& keyword, int count, Qt::ItemFlags extraFlags)
-{
-    for (int i = 0; i < mData.size(); ++i)
-        if (mData[i].keyword == keyword)
-            return {};
+QModelIndex KeywordsModel::insert(const QString& keyword, int count, Qt::ItemFlags extraFlags)
+{    
+    auto keywords = values();
+    int row = keyword.isEmpty() ? -1 : keywords.indexOf(keyword, Qt::CaseInsensitive);
+    if (row != -1) {
+        mData[row].count = count;
+        mData[row].extraFlags = extraFlags;
+        emit dataChanged(index(row, COLUMN_KEYWORD_COUNT), index(row, COLUMN_COUNT));
+        return index(row, 0);
+    }
 
-    const int row = rowCount();
+    row = rowCount();
+    if (!keyword.isEmpty())
+    {
+        keywords.append(keyword);
+
+        std::sort(keywords.begin(), keywords.end(), [](const QString& L, const QString& R){
+            return L.toUpper() < R.toUpper();
+        });
+
+        row = keywords.indexOf(keyword);
+    }
 
     beginInsertRows({}, row, row);
-    mData.append({ keyword, Qt::Unchecked, count, extraFlags });
+    mData.insert(row, { keyword, Qt::Unchecked, count, extraFlags });
     endInsertRows();
 
     return index(row, 0);
@@ -124,6 +141,14 @@ void KeywordsModel::setExtraFlags(Qt::ItemFlags flags)
 {
     for (Data& data : mData)
         data.extraFlags = flags;
+}
+
+QStringList KeywordsModel::values() const
+{
+    QStringList values;
+    for (const Data& data: mData)
+        values.append(data.keyword);
+    return values;
 }
 
 QStringList KeywordsModel::values(Qt::CheckState state) const
@@ -161,21 +186,21 @@ void KeywordsDialog::setMode(Mode mode)
 
         mView->setColumnHidden(KeywordsModel::COLUMN_KEYWORD_COUNT, mMode == Mode::Edit);
 
-        mAdd->setVisible(mMode == Mode::Edit);
+        mInsert->setVisible(mMode == Mode::Edit);
         mApply->setVisible(mMode == Mode::Edit);
     }
 }
 
 QPushButton* KeywordsDialog::button(Button button)
 {
-    return button == Button::Add ? mAdd : mApply;
+    return button == Button::Add ? mInsert : mApply;
 }
 
 KeywordsDialog::KeywordsDialog(QWidget* parent)
     : QDialog(parent)
     , mView(new QTreeView(this))
     , mModel(new KeywordsModel(this))
-    , mAdd(new QPushButton(tr("Add"), this))
+    , mInsert(new QPushButton(tr("Insert"), this))
     , mApply(new QPushButton(tr("Apply"), this))
 {
     mView->setModel(mModel);
@@ -201,12 +226,16 @@ KeywordsDialog::KeywordsDialog(QWidget* parent)
             }
             mApply->setEnabled(true); // TODO check ExifStorage::keywords() == model->keywords()
         }
+
+        if (roles.contains(Qt::EditRole)) {
+            mApply->setEnabled(true);
+        }
     });
 
     connect(mApply, &QPushButton::clicked, this, &KeywordsDialog::apply);
 
-    connect(mAdd, &QPushButton::clicked, this, [this]{
-        view()->edit(model()->add("", 0, Qt::ItemIsEditable));
+    connect(mInsert, &QPushButton::clicked, this, [this]{
+        mView->edit(model()->insert("", 0, Qt::ItemIsEditable));
     });
 
     auto lay = new QVBoxLayout(this);
@@ -218,17 +247,20 @@ KeywordsDialog::KeywordsDialog(QWidget* parent)
     lay->setContentsMargins({});
     lay->setSpacing(0);
 
-    blay->addWidget(mAdd);
+    blay->addWidget(mInsert);
     blay->addStretch();
     blay->addWidget(mApply);
 
     lay->addWidget(mView);
     lay->addLayout(blay);
 
-    mAdd->hide();
+    mInsert->hide();
     mApply->hide();
 
     setWindowTitle(tr("Keywords"));
 
     setMode(Mode::Filter);
+
+    mInsert->setShortcut(Qt::Key_Insert);
+    mApply->setShortcut(Qt::Key_F2);
 }

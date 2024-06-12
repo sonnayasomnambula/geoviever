@@ -81,22 +81,17 @@ void ExifStorage::add(const QSharedPointer<Photo>& photo)
             for (const QString& keyword: photo->keywords.split(';'))
             {
                 QSet<QString>& files = mKeywords[keyword.trimmed()];
-                bool empty = files.isEmpty();
                 files.insert(photo->path);
-
-                if (empty || keywords.contains(keyword))
-                    keywords[keyword] = files.size();
+                keywords[keyword] = files.size();
             }
         }
 
         mInProgress.remove(photo->path);
         rest = mInProgress.size();
-
-
     }
 
     emit ready(photo);
-    emit remains(rest);    
+    emit remains(rest);
     for (auto i = keywords.cbegin(); i != keywords.cend(); ++i)
         emit keywordAdded(i.key(), i.value());
 }

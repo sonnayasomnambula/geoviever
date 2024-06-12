@@ -32,13 +32,14 @@ public:
     bool setData(const QModelIndex& index, const QVariant& value, int role) override;
 
     void clear();
-    QModelIndex add(const QString& keyword, int count = 0, Qt::ItemFlags extraFlags = Qt::NoItemFlags);
+    QModelIndex insert(const QString& keyword, int count = 0, Qt::ItemFlags extraFlags = Qt::NoItemFlags);
     void setExtraFlags(Qt::ItemFlags flags);
 
+    QStringList values() const;
     QStringList values(Qt::CheckState state) const;
     void setChecked(const QSet<QString>& checked, const QSet<QString>& partiallyChecked);
 
-private:
+private:    
     struct Data
     {
         QString keyword;
@@ -76,7 +77,7 @@ private:
     QTreeView* mView = nullptr;
     KeywordsModel* mModel = nullptr;
 
-    QPushButton* mAdd = nullptr;
+    QPushButton* mInsert = nullptr;
     QPushButton* mApply = nullptr;
 
     Mode mMode = Mode::Edit;
