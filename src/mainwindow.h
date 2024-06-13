@@ -66,7 +66,8 @@ private:
     void loadSettings();
     void saveSettings();
 
-    void showTooltip(const QPoint& pos);
+    void showMapTooltip(const QPoint& pos);
+    void showTreeTooltip(const QPoint& pos);
     void selectPicture(const QString& path);
 
     QStringList history() const;

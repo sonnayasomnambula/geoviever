@@ -1,5 +1,8 @@
+#include <QGuiApplication>
 #include <QHeaderView>
 #include <QKeyEvent>
+#include <QScreen>
+#include <QScrollBar>
 
 #include <cmath>
 
@@ -7,17 +10,30 @@
 #include "pics.h"
 #include "tooltip.h"
 
-int ToolTip::Model::rowCount(const QModelIndex& parent) const
+QRect TooltipUtils::adjustedRect(const QPoint& pos, const QSize& size)
+{
+    QRect rect(pos, size);
+    QScreen* screen = QGuiApplication::screenAt(pos);
+    if (!screen) screen = QGuiApplication::primaryScreen();
+    QRect screenRect = screen->geometry();
+    if (rect.right() > screenRect.right())
+        rect.moveLeft(screenRect.right() - rect.width());
+    if (rect.bottom() > screenRect.bottom())
+        rect.moveTop(screenRect.bottom() - rect.height());
+    return rect;
+}
+
+int GridToolTip::Model::rowCount(const QModelIndex& parent) const
 {
     return parent.isValid() ? 0 : mRowCount;
 }
 
-int ToolTip::Model::columnCount(const QModelIndex& parent) const
+int GridToolTip::Model::columnCount(const QModelIndex& parent) const
 {
     return parent.isValid() ? 0 : mColCount;
 }
 
-QVariant ToolTip::Model::data(const QModelIndex& index, int role) const
+QVariant GridToolTip::Model::data(const QModelIndex& index, int role) const
 {
     int internalIndex = index.row() * mColCount + index.column();
     if (internalIndex >= mData.size())
@@ -36,7 +52,7 @@ QVariant ToolTip::Model::data(const QModelIndex& index, int role) const
     return {};
 }
 
-void ToolTip::Model::setFiles(const QStringList& files)
+void GridToolTip::Model::setFiles(const QStringList& files)
 {
     if (mData == files)
         return;
@@ -58,7 +74,7 @@ void ToolTip::Model::setFiles(const QStringList& files)
     endResetModel();
 }
 
-void ToolTip::moveSelection(int dx, int dy)
+void GridToolTip::moveSelection(int dx, int dy)
 {
     auto current = currentIndex();
     auto next = current.sibling(current.row() + dy, current.column() + dx);
@@ -66,34 +82,30 @@ void ToolTip::moveSelection(int dx, int dy)
         setCurrentIndex(next);
 }
 
-void ToolTip::enterEvent(QEvent*)
+void GridToolTip::showAt(const QPoint& pos)
 {
-    if (mTimerId)
+    // https://stackoverflow.com/a/8771172
+    int w = verticalHeader()->width() + 4; // +4 seems to be needed
+    for (int i = 0; i < mModel->columnCount(); i++)
+        w += columnWidth(i); // seems to include gridline (on my machine)
+    int h = horizontalHeader()->height() + 4;
+    for (int i = 0; i < mModel->rowCount(); i++)
+        h += rowHeight(i);
+    if (h > w)
     {
-        killTimer(mTimerId);
-        mTimerId = 0;
+        h = w;
+        w += verticalScrollBar()->sizeHint().width();
     }
+
+    QRect rect = adjustedRect(pos, QSize(w, h));
+
+    move(rect.topLeft());
+    resize(rect.size());
+    show();
 }
 
-void ToolTip::leaveEvent(QEvent*)
+void GridToolTip::keyPressEvent(QKeyEvent* e)
 {
-    mTimerId = startTimer(600);
-}
-
-void ToolTip::hideEvent(QHideEvent*)
-{
-    if (mTimerId)
-    {
-        killTimer(mTimerId);
-        mTimerId = 0;
-    }
-}
-
-void ToolTip::keyPressEvent(QKeyEvent* e)
-{
-    if (e->key() == Qt::Key_Escape)
-        hide();
-
     if (e->key() == Qt::Key_Left)
         moveSelection(-1, 0);
 
@@ -117,17 +129,12 @@ void ToolTip::keyPressEvent(QKeyEvent* e)
 
     if (e->key() == Qt::Key_End)
         moveSelection(mModel->columnCount() - currentIndex().column() - 1, 0);
+
+    AbstractToolTip::keyPressEvent(e);
 }
 
-void ToolTip::timerEvent(QTimerEvent* e)
+GridToolTip::GridToolTip(QWidget* parent) : AbstractToolTip(parent)
 {
-    if (e->timerId() == mTimerId)
-        hide();
-}
-
-ToolTip::ToolTip(QWidget* parent) : QTableView(parent)
-{
-    setWindowFlags(Qt::ToolTip);
     setModel(mModel);
     horizontalHeader()->hide();
     verticalHeader()->hide();
@@ -136,9 +143,15 @@ ToolTip::ToolTip(QWidget* parent) : QTableView(parent)
     setShowGrid(false);
 }
 
-void ToolTip::setFiles(const QStringList& files)
+void GridToolTip::setFiles(const QStringList& files)
 {
     mModel->setFiles(files);
     resizeRowsToContents();
     resizeColumnsToContents();
+}
+
+void LabelTooltip::showAt(const QPoint &pos)
+{
+    move(adjustedRect(pos, sizeHint()).topLeft());
+    show();
 }

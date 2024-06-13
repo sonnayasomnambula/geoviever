@@ -11,8 +11,6 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQmlError>
-#include <QScreen>
-#include <QScrollBar>
 #include <QSortFilterProxyModel>
 #include <QStandardPaths>
 #include <QStringListModel>
@@ -240,6 +238,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     ui->map->installEventFilter(this);
+    ui->tree->installEventFilter(this);
 
     QQmlEngine* engine = ui->map->engine();
     engine->rootContext()->setContextProperty("controller", mMapModel);
@@ -261,8 +260,9 @@ void MainWindow::closeEvent(QCloseEvent* /*e*/)
 bool MainWindow::eventFilter(QObject* o, QEvent* e)
 {
     if (o == ui->map && e->type() == QEvent::ToolTip)
-        if (auto event = dynamic_cast<QHelpEvent*>(e))
-            showTooltip(event->globalPos());
+        showMapTooltip(static_cast<QHelpEvent*>(e)->globalPos());
+    if (o == ui->tree && e->type() == QEvent::ToolTip)
+        showTreeTooltip(static_cast<QHelpEvent*>(e)->globalPos());
     return QObject::eventFilter(o, e);
 }
 
@@ -301,33 +301,7 @@ void MainWindow::saveSettings()
         settings.keywordDialog.geometry.save(dialog);
 }
 
-static QRect getRectToShow(QTableView* t, QAbstractItemModel* m, const QPoint& pos)
-{
-    // https://stackoverflow.com/a/8771172
-    int w = t->verticalHeader()->width() + 4; // +4 seems to be needed
-    for (int i = 0; i < m->columnCount(); i++)
-        w += t->columnWidth(i); // seems to include gridline (on my machine)
-    int h = t->horizontalHeader()->height() + 4;
-    for (int i = 0; i < m->rowCount(); i++)
-        h += t->rowHeight(i);
-    if (h > w)
-    {
-        h = w;
-        w += t->verticalScrollBar()->sizeHint().width();
-    }
-
-    QRect rect(pos, QSize(w, h));
-    QScreen* screen = QGuiApplication::screenAt(pos);
-    if (!screen) screen = QGuiApplication::primaryScreen();
-    QRect screenRect = screen->geometry();
-    if (rect.right() > screenRect.right())
-        rect.moveLeft(screenRect.right() - rect.width());
-    if (rect.bottom() > screenRect.bottom())
-        rect.moveTop(screenRect.bottom() - rect.height());
-    return rect;
-}
-
-void MainWindow::showTooltip(const QPoint& pos)
+void MainWindow::showMapTooltip(const QPoint& pos)
 {
     int row = mMapModel->property("hoveredRow").toInt(); // TODO getter
     QModelIndex index = mMapModel->index(row, 0);
@@ -341,15 +315,15 @@ void MainWindow::showTooltip(const QPoint& pos)
         return;
     }
 
-    static ToolTip* widget = nullptr;
+    static GridToolTip* widget = nullptr;
     if (!widget)
     {
-        widget = new ToolTip(this);
+        widget = new GridToolTip(this);
         connect(widget->selectionModel(), &QItemSelectionModel::currentChanged, this, [this](const QModelIndex& index){
-            selectPicture(widget->model()->data(index, ToolTip::FilePathRole).toString());
+            selectPicture(widget->model()->data(index, GridToolTip::FilePathRole).toString());
         });
-        connect(widget, &ToolTip::doubleClicked, this, [this](const QModelIndex& index){
-            QString path = widget->model()->data(index, ToolTip::FilePathRole).toString();
+        connect(widget, &GridToolTip::doubleClicked, this, [this](const QModelIndex& index){
+            QString path = widget->model()->data(index, GridToolTip::FilePathRole).toString();
             if (auto photo = ExifStorage::data(path)) {
                 mMapModel->setZoom(18);
                 mMapModel->setCenter(photo->position);
@@ -358,14 +332,21 @@ void MainWindow::showTooltip(const QPoint& pos)
     }
 
     widget->setFiles(files);
-
-    QRect rect = getRectToShow(widget, widget->model(), pos);
-
-    widget->move(rect.topLeft());
-    widget->resize(rect.size());
-
-    widget->show();
+    widget->showAt(pos);
     widget->setFocus();
+}
+
+void MainWindow::showTreeTooltip(const QPoint& pos)
+{
+    QModelIndex index = ui->tree->indexAt(ui->tree->viewport()->mapFromGlobal(pos)).siblingAtColumn(0);
+    if (!index.isValid() || mTreeModel->isDir(index)) return;
+    QString path = mTreeModel->filePath(index);
+
+    static auto widget = new LabelTooltip(this);
+
+    Exif::File exif(path);
+    widget->setPixmap(exif.thumbnail(300, 200));
+    widget->showAt(pos);
 }
 
 void MainWindow::selectPicture(const QString& path)
