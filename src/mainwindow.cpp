@@ -166,41 +166,36 @@ MainWindow::MainWindow(QWidget *parent)
     , mMapModel(new MapPhotoListModel)
 {
     ui->setupUi(this);
-    ui->tree->addActions({ ui->actionCheck, ui->actionUncheck, ui->actionEditKeywords });
+
+    ui->actionSeparator1->setSeparator(true);
+    ui->actionSeparator2->setSeparator(true);
+
+    auto viewGroup = new QActionGroup(this);
+    viewGroup->addAction(ui->actionIconView);
+    viewGroup->addAction(ui->actionTreeView);
+
+    QList<QAction*> actions = { ui->actionCheck, ui->actionUncheck,
+                                ui->actionSeparator1,
+                                ui->actionEditKeywords,
+                                ui->actionSeparator2,
+                                ui->actionIconView, ui->actionTreeView };
+    ui->tree->addActions(actions);
+    ui->list->addActions(actions);
 
     auto comboDelegate = new ItemButtonDelegate(QImage(":/cross-small.png"), ui->root);
     ui->root->setItemDelegate(comboDelegate);
     connect(comboDelegate, &ItemButtonDelegate::buttonPressed, ui->root, &QComboBox::removeItem);
 
     ui->tree->setItemDelegateForColumn(FileTreeModel::COLUMN_COORDS, new GeoCoordinateDelegate(this));
+
     ui->tree->setModel(mTreeModel);
-    connect(ui->tree->selectionModel(), &QItemSelectionModel::currentRowChanged, this, [this](const QModelIndex& idx){
-        if (mTreeModel->isDir(idx))
-        {
-            ui->picture->setPath("");
-            ui->picture->setPixmap({});
-            mMapModel->setCurrentRow(-1);
-            return;
-        }
+    ui->list->setModel(mTreeModel);
 
-        QString path = mTreeModel->filePath(idx);
-        ui->picture->setPath(path);
+    connect(ui->tree->selectionModel(), &QItemSelectionModel::currentRowChanged, this, &MainWindow::updateSelection);
+    connect(ui->list->selectionModel(), &QItemSelectionModel::currentRowChanged, this, &MainWindow::updateSelection);
 
-        Exif::Orientation orientation;
-        if (auto photo = ExifStorage::data(path))
-            orientation = photo->orientation;
-        else
-            orientation = Exif::File(path, false).orientation();
+    connect(ui->list, &QListView::doubleClicked, this, &MainWindow::on_tree_doubleClicked);
 
-        QImageReader reader(path);
-        ui->picture->setPixmap(Pics::fromImageReader(&reader, orientation));
-
-        if (idx.isValid())
-        {
-            QModelIndex index = mMapModel->index(path);
-            mMapModel->setCurrentRow(index.row());
-        }
-    });
     connect(ui->map, &QQuickWidget::statusChanged, [this](QQuickWidget::Status status){
         if (status == QQuickWidget::Status::Error) {
             // for (const auto& error: ui->map->errors())
@@ -529,6 +524,35 @@ void MainWindow::saveKeywords()
     keywordsDialog()->model()->setExtraFlags(Qt::NoItemFlags); // reset
 }
 
+void MainWindow::updateSelection(const QModelIndex& idx)
+{
+    if (mTreeModel->isDir(idx))
+    {
+        ui->picture->setPath("");
+        ui->picture->setPixmap({});
+        mMapModel->setCurrentRow(-1);
+        return;
+    }
+
+    QString path = mTreeModel->filePath(idx);
+    ui->picture->setPath(path);
+
+    Exif::Orientation orientation;
+    if (auto photo = ExifStorage::data(path))
+        orientation = photo->orientation;
+    else
+        orientation = Exif::File(path, false).orientation();
+
+    QImageReader reader(path);
+    ui->picture->setPixmap(Pics::fromImageReader(&reader, orientation));
+
+    if (idx.isValid())
+    {
+        QModelIndex index = mMapModel->index(path);
+        mMapModel->setCurrentRow(index.row());
+    }
+}
+
 void MainWindow::on_pickRoot_clicked()
 {
     QString root = ui->root->currentText();
@@ -557,7 +581,9 @@ void MainWindow::on_root_currentTextChanged(const QString& text)
         return;
 
     mTreeModel->setRootPath(text);
-    ui->tree->setRootIndex(mTreeModel->index(text));
+    auto root = mTreeModel->index(text);
+    ui->tree->setRootIndex(root);
+    ui->list->setRootIndex(root);
     mMapModel->clear();
     setHistory(uconcat(text, history()));
 }
@@ -570,6 +596,25 @@ void MainWindow::on_filter_textChanged(const QString& text)
 
 void MainWindow::on_tree_doubleClicked(const QModelIndex& index)
 {
+    qDebug() << __func__ << ui->stackedWidget->currentWidget();
+    if (ui->stackedWidget->currentWidget() == ui->pageList)
+    {
+        if (mTreeModel->isDir(index))
+        {
+            QDir dir;
+            if (index.data() == "..")
+            {
+                dir = mTreeModel->filePath(ui->list->rootIndex());
+                dir.cdUp();
+            }
+            else
+            {
+                dir = mTreeModel->filePath(index);
+            }
+            ui->list->setRootIndex(mTreeModel->index(dir.absolutePath()));
+        }
+    }
+
     auto coords = index.siblingAtColumn(FileTreeModel::COLUMN_COORDS).data().toPointF();
     if (!coords.isNull())
     {
@@ -603,3 +648,15 @@ void MainWindow::on_actionEditKeywords_triggered(bool checked)
     keywordsDialog()->show();
 }
 
+void MainWindow::on_actionIconView_toggled(bool toggled)
+{
+    ui->stackedWidget->setCurrentWidget(toggled ? ui->pageList : ui->pageTree);
+    mTreeModel->setFilter(toggled ?
+                            mTreeModel->filter() & ~QDir::NoDotDot :
+                            mTreeModel->filter() | QDir::NoDotDot);
+}
+
+void MainWindow::on_list_doubleClicked(const QModelIndex &index)
+{
+
+}

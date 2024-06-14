@@ -78,6 +78,7 @@ private:
     void keywordChecked(const QString& keyword, Qt::CheckState state);
     void updateKeywordsDialog();
     void saveKeywords();
+    void updateSelection(const QModelIndex& idx);
 
 private slots:
     void on_pickRoot_clicked();
@@ -89,6 +90,9 @@ private slots:
     void on_actionCheck_triggered();
     void on_actionUncheck_triggered();
     void on_actionEditKeywords_triggered(bool checked);
+
+    void on_actionIconView_toggled(bool toggled);
+    void on_list_doubleClicked(const QModelIndex &index);
 
 private:
     Ui::MainWindow* ui = nullptr;
