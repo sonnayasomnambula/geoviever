@@ -67,7 +67,7 @@ private:
     void saveSettings();
 
     void showMapTooltip(const QPoint& pos);
-    void showTreeTooltip(const QPoint& pos);
+    void showTooltip(const QPoint& pos, QAbstractItemView* view);
     void selectPicture(const QString& path);
 
     QStringList history() const;
@@ -79,6 +79,9 @@ private:
     void updateKeywordsDialog();
     void saveKeywords();
     void updateSelection(const QModelIndex& idx);
+
+    QAbstractItemView* currentView() const;
+    QModelIndexList currentSelection() const;
 
 private slots:
     void on_pickRoot_clicked();
@@ -92,7 +95,6 @@ private slots:
     void on_actionEditKeywords_triggered(bool checked);
 
     void on_actionIconView_toggled(bool toggled);
-    void on_list_doubleClicked(const QModelIndex &index);
 
 private:
     Ui::MainWindow* ui = nullptr;

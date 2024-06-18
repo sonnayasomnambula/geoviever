@@ -22,23 +22,23 @@ void ExifReader::parse(const QString& path)
 
 QSharedPointer<Photo> ExifReader::load(const QString& path)
 {
-    Exif::File exif;
-    if (!exif.load(QDir::toNativeSeparators(path), false))
-        return {}; // no EXIF here
-
     auto data = QSharedPointer<Photo>::create();
     data->path = path;
 
-    auto latVal = exif.value(EXIF_IFD_GPS, Exif::Tag::GPS::LATITUDE);
-    auto lonVal = exif.value(EXIF_IFD_GPS, Exif::Tag::GPS::LONGITUDE);
-    auto latRef = exif.value(EXIF_IFD_GPS, Exif::Tag::GPS::LATITUDE_REF).toByteArray();
-    auto lonRef = exif.value(EXIF_IFD_GPS, Exif::Tag::GPS::LONGITUDE_REF).toByteArray();
+    Exif::File exif;
+    if (exif.load(QDir::toNativeSeparators(path), false))
+    {
+        auto latVal = exif.value(EXIF_IFD_GPS, Exif::Tag::GPS::LATITUDE);
+        auto lonVal = exif.value(EXIF_IFD_GPS, Exif::Tag::GPS::LONGITUDE);
+        auto latRef = exif.value(EXIF_IFD_GPS, Exif::Tag::GPS::LATITUDE_REF).toByteArray();
+        auto lonRef = exif.value(EXIF_IFD_GPS, Exif::Tag::GPS::LONGITUDE_REF).toByteArray();
 
-    if (!latVal.isNull() && !lonVal.isNull())
-        data->position = Exif::Utils::fromLatLon(latVal.toList(), latRef, lonVal.toList(), lonRef);
+        if (!latVal.isNull() && !lonVal.isNull())
+            data->position = Exif::Utils::fromLatLon(latVal.toList(), latRef, lonVal.toList(), lonRef);
 
-    data->orientation = exif.orientation();
-    data->keywords = exif.value(EXIF_IFD_0, EXIF_TAG_XP_KEYWORDS).toString();
+        data->orientation = exif.orientation();
+        data->keywords = exif.value(EXIF_IFD_0, EXIF_TAG_XP_KEYWORDS).toString();
+    }
 
     QPixmap pix = exif.thumbnail(thumbnailSize, thumbnailSize);
     if (!pix.isNull())

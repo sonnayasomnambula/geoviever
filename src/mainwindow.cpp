@@ -74,6 +74,31 @@ public:
     }
 };
 
+class PreviewDelegate : public QStyledItemDelegate
+{
+    using Super = QStyledItemDelegate;
+public:
+    using Super::Super;
+
+    QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override {
+        auto hint = Super::sizeHint(option, index);
+        if (auto model = qobject_cast<const FileTreeModel*>(index.model()))
+            if (model->isDir(index))
+                return hint;
+        hint.setWidth(100);
+        return hint;
+    }
+
+protected:
+    void initStyleOption(QStyleOptionViewItem* option, const QModelIndex& index) const override {
+        Super::initStyleOption(option, index);
+        if (auto model = qobject_cast<const FileTreeModel*>(index.model()))
+            if (!model->isDir(index))
+                if (auto photo = ExifStorage::data(model->filePath(index)))
+                    option->icon = Pics::fromBase64(photo->pixmap);
+    }
+};
+
 ItemButtonDelegate::ItemButtonDelegate(const QImage& buttonImage, QComboBox* parent)
     : Super(parent)
     , mCombo(parent)
@@ -187,6 +212,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(comboDelegate, &ItemButtonDelegate::buttonPressed, ui->root, &QComboBox::removeItem);
 
     ui->tree->setItemDelegateForColumn(FileTreeModel::COLUMN_COORDS, new GeoCoordinateDelegate(this));
+    ui->list->setItemDelegate(new PreviewDelegate(this));
 
     ui->tree->setModel(mTreeModel);
     ui->list->setModel(mTreeModel);
@@ -234,6 +260,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     ui->map->installEventFilter(this);
     ui->tree->installEventFilter(this);
+    ui->list->installEventFilter(this);
 
     QQmlEngine* engine = ui->map->engine();
     engine->rootContext()->setContextProperty("controller", mMapModel);
@@ -257,7 +284,9 @@ bool MainWindow::eventFilter(QObject* o, QEvent* e)
     if (o == ui->map && e->type() == QEvent::ToolTip)
         showMapTooltip(static_cast<QHelpEvent*>(e)->globalPos());
     if (o == ui->tree && e->type() == QEvent::ToolTip)
-        showTreeTooltip(static_cast<QHelpEvent*>(e)->globalPos());
+        showTooltip(static_cast<QHelpEvent*>(e)->globalPos(), ui->tree);
+    if (o == ui->list && e->type() == QEvent::ToolTip)
+        showTooltip(static_cast<QHelpEvent*>(e)->globalPos(), ui->list);
     return QObject::eventFilter(o, e);
 }
 
@@ -331,9 +360,9 @@ void MainWindow::showMapTooltip(const QPoint& pos)
     widget->setFocus();
 }
 
-void MainWindow::showTreeTooltip(const QPoint& pos)
+void MainWindow::showTooltip(const QPoint& pos, QAbstractItemView* view)
 {
-    QModelIndex index = ui->tree->indexAt(ui->tree->viewport()->mapFromGlobal(pos)).siblingAtColumn(0);
+    QModelIndex index = view->indexAt(view->viewport()->mapFromGlobal(pos)).siblingAtColumn(0);
     if (!index.isValid() || mTreeModel->isDir(index)) return;
     QString path = mTreeModel->filePath(index);
 
@@ -348,14 +377,14 @@ void MainWindow::selectPicture(const QString& path)
 {
     if (path.isEmpty())
     {
-        ui->tree->setCurrentIndex({});
+        currentView()->setCurrentIndex({});
         return;
     }
 
     auto i = mTreeModel->index(path);
     if (i.isValid())
     {
-        ui->tree->setCurrentIndex(i);
+        currentView()->setCurrentIndex(i);
         return;
     }
 
@@ -411,9 +440,10 @@ KeywordsDialog* MainWindow::keywordsDialog(CreateOption createOption)
 
     connect(dialog, &KeywordsDialog::checkChanged, this, &MainWindow::keywordChecked);
     connect(ui->tree->selectionModel(), &QItemSelectionModel::selectionChanged, this, &MainWindow::updateKeywordsDialog);
+    connect(ui->list->selectionModel(), &QItemSelectionModel::selectionChanged, this, &MainWindow::updateKeywordsDialog);
     connect(dialog, &KeywordsDialog::apply, this, &MainWindow::saveKeywords);
 
-    if (ui->tree->selectionModel()->hasSelection())
+    if (currentView()->selectionModel()->hasSelection())
         updateKeywordsDialog();
 
     return dialog;
@@ -452,7 +482,7 @@ void MainWindow::updateKeywordsDialog()
 
         QSet<QString> common, partially;
 
-        for (const auto& index: ui->tree->selectionModel()->selectedRows()) {
+        for (const auto& index: currentSelection()) {
             if (mTreeModel->isDir(index)) continue;
             QString path = mTreeModel->filePath(index);
             QString keywordsTag;
@@ -483,7 +513,7 @@ void MainWindow::saveKeywords()
 {
     Settings settings;
 
-    auto selection = ui->tree->selectionModel()->selectedRows();
+    auto selection = currentSelection();
     if (selection.isEmpty())
         return;
 
@@ -553,6 +583,20 @@ void MainWindow::updateSelection(const QModelIndex& idx)
     }
 }
 
+QAbstractItemView *MainWindow::currentView() const
+{
+    return ui->actionIconView->isChecked() ?
+               static_cast<QAbstractItemView*>(ui->list) :
+               static_cast<QAbstractItemView*>(ui->tree);
+}
+
+QModelIndexList MainWindow::currentSelection() const
+{
+    return ui->actionIconView->isChecked() ?
+               ui->list->selectionModel()->selectedIndexes() :
+               ui->tree->selectionModel()->selectedRows();
+}
+
 void MainWindow::on_pickRoot_clicked()
 {
     QString root = ui->root->currentText();
@@ -596,7 +640,6 @@ void MainWindow::on_filter_textChanged(const QString& text)
 
 void MainWindow::on_tree_doubleClicked(const QModelIndex& index)
 {
-    qDebug() << __func__ << ui->stackedWidget->currentWidget();
     if (ui->stackedWidget->currentWidget() == ui->pageList)
     {
         if (mTreeModel->isDir(index))
@@ -604,12 +647,12 @@ void MainWindow::on_tree_doubleClicked(const QModelIndex& index)
             QDir dir;
             if (index.data() == "..")
             {
-                dir = mTreeModel->filePath(ui->list->rootIndex());
+                dir.setPath(mTreeModel->filePath(ui->list->rootIndex()));
                 dir.cdUp();
             }
             else
             {
-                dir = mTreeModel->filePath(index);
+                dir.setPath(mTreeModel->filePath(index));
             }
             ui->list->setRootIndex(mTreeModel->index(dir.absolutePath()));
         }
@@ -625,14 +668,14 @@ void MainWindow::on_tree_doubleClicked(const QModelIndex& index)
 
 void MainWindow::on_actionCheck_triggered()
 {
-    for (const auto& tid: ui->tree->selectionModel()->selectedRows())
+    for (const auto& tid: currentSelection())
         mTreeModel->setData(tid, Qt::Checked, Qt::CheckStateRole);
 }
 
 
 void MainWindow::on_actionUncheck_triggered()
 {
-    for (const auto& tid: ui->tree->selectionModel()->selectedRows())
+    for (const auto& tid: currentSelection())
         mTreeModel->setData(tid, Qt::Unchecked, Qt::CheckStateRole);
 }
 
@@ -654,9 +697,4 @@ void MainWindow::on_actionIconView_toggled(bool toggled)
     mTreeModel->setFilter(toggled ?
                             mTreeModel->filter() & ~QDir::NoDotDot :
                             mTreeModel->filter() | QDir::NoDotDot);
-}
-
-void MainWindow::on_list_doubleClicked(const QModelIndex &index)
-{
-
 }
