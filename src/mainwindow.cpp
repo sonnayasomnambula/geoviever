@@ -41,12 +41,12 @@ struct Settings : AbstractSettings
     } dirs;
 
     Tag<QString> filter = "filter";
-
     struct {
         State state = "window/state";
         Geometry geometry = "window/geometry";
-        struct { State state = "window/verticalSplitter.state"; } verticalSplitter;
-        struct { State state = "window/horizontalSplitter.state"; } horizontalSplitter;
+        struct { State state = "window/mapSplitter.state"; } mapSplitter;
+        struct { State state = "window/treeSplitter.state"; } treeSplitter;
+        struct { State state = "window/centralSplitter.state"; } centralSplitter;
         struct { State state = "window/header.state"; } header;
     } window;
 
@@ -74,28 +74,39 @@ public:
     }
 };
 
-class PreviewDelegate : public QStyledItemDelegate
+class FSPreviewDelegate : public QStyledItemDelegate
 {
     using Super = QStyledItemDelegate;
 public:
     using Super::Super;
 
-    QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override {
-        auto hint = Super::sizeHint(option, index);
-        if (auto model = qobject_cast<const FileTreeModel*>(index.model()))
-            if (model->isDir(index))
-                return hint;
-        hint.setWidth(100);
-        return hint;
+protected:
+    void initStyleOption(QStyleOptionViewItem* option, const QModelIndex& index) const override {
+        Super::initStyleOption(option, index);
+        if (auto model = qobject_cast<const QFileSystemModel*>(index.model()))
+            if (!model->isDir(index))
+                if (auto photo = ExifStorage::data(model->filePath(index)))
+                    option->icon = Pics::fromBase64(photo->pixmap);
+    }
+};
+
+class SLPreviewDelegate : public QStyledItemDelegate
+{
+    using Super = QStyledItemDelegate;
+public:
+    using Super::Super;
+    QString displayText(const QVariant& value, const QLocale& /*locale*/) const override {
+        QDir dir(value.toString());
+        return dir.isAbsolute() ? dir.dirName() : value.toString();
     }
 
 protected:
     void initStyleOption(QStyleOptionViewItem* option, const QModelIndex& index) const override {
         Super::initStyleOption(option, index);
-        if (auto model = qobject_cast<const FileTreeModel*>(index.model()))
-            if (!model->isDir(index))
-                if (auto photo = ExifStorage::data(model->filePath(index)))
-                    option->icon = Pics::fromBase64(photo->pixmap);
+        if (auto photo = ExifStorage::data(index.data().toString()))
+            option->icon = Pics::fromBase64(photo->pixmap);
+        if (!option->icon.isNull())
+            option->features |= QStyleOptionViewItem::HasDecoration;
     }
 };
 
@@ -188,6 +199,7 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
     , mTreeModel(new FileTreeModel(this))
+    , mCheckedModel(new PhotoListModel(this))
     , mMapModel(new MapPhotoListModel)
 {
     ui->setupUi(this);
@@ -212,13 +224,19 @@ MainWindow::MainWindow(QWidget *parent)
     connect(comboDelegate, &ItemButtonDelegate::buttonPressed, ui->root, &QComboBox::removeItem);
 
     ui->tree->setItemDelegateForColumn(FileTreeModel::COLUMN_COORDS, new GeoCoordinateDelegate(this));
-    ui->list->setItemDelegate(new PreviewDelegate(this));
+    ui->list->setItemDelegate(new FSPreviewDelegate(this));
+    ui->checked->setItemDelegate(new SLPreviewDelegate(this));
 
     ui->tree->setModel(mTreeModel);
     ui->list->setModel(mTreeModel);
+    ui->checked->setModel(mCheckedModel);
 
     connect(ui->tree->selectionModel(), &QItemSelectionModel::currentRowChanged, this, &MainWindow::updateSelection);
     connect(ui->list->selectionModel(), &QItemSelectionModel::currentRowChanged, this, &MainWindow::updateSelection);
+    connect(ui->checked->selectionModel(), &QItemSelectionModel::currentChanged, this, [this](const QModelIndex& current){
+        if (current.isValid())
+            currentView()->setCurrentIndex(mTreeModel->index(current.data().toString()));
+    });
 
     connect(ui->list, &QListView::doubleClicked, this, &MainWindow::on_tree_doubleClicked);
 
@@ -239,8 +257,16 @@ MainWindow::MainWindow(QWidget *parent)
     });
     */
 
-    connect(mTreeModel, &FileTreeModel::inserted, mMapModel, &MapPhotoListModel::insert);
-    connect(mTreeModel, &FileTreeModel::removed, mMapModel, &MapPhotoListModel::remove);
+    connect(mTreeModel, &FileTreeModel::itemChecked, this, [this](const QString& path, bool checked){
+        if (checked) {
+            mMapModel->insert(path);
+            mCheckedModel->insert(path);
+        } else {
+            mMapModel->remove(path);
+            mCheckedModel->remove(path);
+        }
+    });
+
     connect(ExifStorage::instance(), &ExifStorage::ready, mMapModel, &MapPhotoListModel::update);
     connect(ExifStorage::instance(), &ExifStorage::remains, this, [this](int count){
         static QElapsedTimer timer;
@@ -296,8 +322,9 @@ void MainWindow::loadSettings()
 
     settings.window.state.restore(this);
     settings.window.geometry.restore(this);
-    settings.window.horizontalSplitter.state.restore(ui->horizontalSplitter);
-    settings.window.verticalSplitter.state.restore(ui->verticalSplitter);
+    settings.window.centralSplitter.state.restore(ui->centralSplitter);
+    settings.window.treeSplitter.state.restore(ui->treeSplitter);
+    settings.window.mapSplitter.state.restore(ui->mapSplitter);
     settings.window.header.state.restore(ui->tree->header());
 
     using QSP = QStandardPaths;
@@ -313,8 +340,9 @@ void MainWindow::saveSettings()
 
     settings.window.state.save(this);
     settings.window.geometry.save(this);
-    settings.window.horizontalSplitter.state.save(ui->horizontalSplitter);
-    settings.window.verticalSplitter.state.save(ui->verticalSplitter);
+    settings.window.centralSplitter.state.save(ui->centralSplitter);
+    settings.window.treeSplitter.state.save(ui->treeSplitter);
+    settings.window.mapSplitter.state.save(ui->mapSplitter);
     settings.window.header.state.save(ui->tree->header());
 
     settings.dirs.history = history();
@@ -580,6 +608,16 @@ void MainWindow::updateSelection(const QModelIndex& idx)
     {
         QModelIndex index = mMapModel->index(path);
         mMapModel->setCurrentRow(index.row());
+    }
+
+    if (idx.data(Qt::CheckStateRole).toInt() == Qt::Checked)
+    {
+        auto checked = mCheckedModel->stringList();
+        int row = checked.indexOf(path);
+        if (row != -1)
+        {
+            ui->checked->setCurrentIndex(mCheckedModel->index(row));
+        }
     }
 }
 

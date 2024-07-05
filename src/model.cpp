@@ -175,7 +175,7 @@ bool FileTreeModel::setCheckState(const QModelIndex& index, const QVariant& valu
 
     Qt::CheckState state = static_cast<Qt::CheckState>(value.toInt());
     for (const QString& entry: entryList(filePath(index)))
-        /*emit*/ state == Qt::Checked ? inserted(entry) : removed(entry);
+        /*emit*/ itemChecked(entry, state == Qt::Checked);
     return true;
 }
 
@@ -203,6 +203,24 @@ const QStringList FileTreeModel::entryList(const QString &dir, const QStringList
         all.append(entryList(directory.absoluteFilePath(subdir), nameFilters));
 
     return all;
+}
+
+void PhotoListModel::insert(const QString& line)
+{
+    auto sl = stringList();
+    int row = 0;
+    while (row < sl.size() && line > sl[row])
+        ++row;
+
+    insertRow(row);
+    setData(index(row), line);
+}
+
+void PhotoListModel::remove(const QString& line)
+{
+    int row = stringList().indexOf(line);
+    if (row != -1)
+        removeRow(row);
 }
 
 // QML-used objects must be destoyed after QML engine so don't pass parent here
@@ -544,3 +562,5 @@ bool MapPhotoListModel::BucketList::operator !=(const BucketList& other) const
 {
     return !(*this == other);
 }
+
+

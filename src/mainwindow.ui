@@ -16,7 +16,7 @@
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="verticalLayout_2">
     <item>
-     <widget class="QSplitter" name="verticalSplitter">
+     <widget class="QSplitter" name="centralSplitter">
       <property name="orientation">
        <enum>Qt::Horizontal</enum>
       </property>
@@ -76,7 +76,7 @@
          </layout>
         </item>
         <item>
-         <widget class="QSplitter" name="horizontalSplitter">
+         <widget class="QSplitter" name="treeSplitter">
           <property name="orientation">
            <enum>Qt::Vertical</enum>
           </property>
@@ -138,6 +138,12 @@
                <property name="layoutMode">
                 <enum>QListView::Batched</enum>
                </property>
+               <property name="gridSize">
+                <size>
+                 <width>100</width>
+                 <height>52</height>
+                </size>
+               </property>
                <property name="viewMode">
                 <enum>QListView::IconMode</enum>
                </property>
@@ -155,10 +161,32 @@
         </item>
        </layout>
       </widget>
-      <widget class="QQuickWidget" name="map">
-       <property name="resizeMode">
-        <enum>QQuickWidget::SizeRootObjectToView</enum>
+      <widget class="QSplitter" name="mapSplitter">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
        </property>
+       <widget class="QQuickWidget" name="map">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+          <horstretch>0</horstretch>
+          <verstretch>3</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="resizeMode">
+         <enum>QQuickWidget::SizeRootObjectToView</enum>
+        </property>
+       </widget>
+       <widget class="QListView" name="checked">
+        <property name="gridSize">
+         <size>
+          <width>100</width>
+          <height>52</height>
+         </size>
+        </property>
+        <property name="viewMode">
+         <enum>QListView::IconMode</enum>
+        </property>
+       </widget>
       </widget>
      </widget>
     </item>

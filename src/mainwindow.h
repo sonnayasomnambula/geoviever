@@ -16,8 +16,10 @@ QT_END_NAMESPACE
 
 class FileTreeModel;
 class KeywordsDialog;
+class PhotoListModel;
 class MapPhotoListModel;
 
+/// combobox item with [x] button
 class ItemButtonDelegate : public QItemDelegate
 {
     using Super = QItemDelegate;
@@ -99,6 +101,7 @@ private slots:
 private:
     Ui::MainWindow* ui = nullptr;
     FileTreeModel*    mTreeModel = nullptr;
+    PhotoListModel* mCheckedModel = nullptr;
     MapPhotoListModel* mMapModel = nullptr;
 };
 

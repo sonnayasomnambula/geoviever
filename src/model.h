@@ -5,6 +5,7 @@
 #include <QGeoCoordinate>
 #include <QPersistentModelIndex>
 #include <QSortFilterProxyModel>
+#include <QStringListModel>
 #include <QVector>
 
 #include "exif/file.h"
@@ -46,8 +47,7 @@ class FileTreeModel : public QFileSystemModel, public Checker
     Q_OBJECT
 
 signals:
-    void inserted(const QString& path);
-    void removed(const QString& path);
+    void itemChecked(const QString& path, bool checked);
 
 public:
     enum Columns { COLUMN_NAME, COLUMN_COORDS, COLUMN_KEYWORDS, COLUMNS_COUNT };
@@ -68,6 +68,16 @@ private:
     QStringList entryList(const QString& dir) const;
 };
 
+class PhotoListModel : public QStringListModel
+{
+    using Super = QStringListModel;
+
+public:
+    using Super::Super;
+
+    void insert(const QString& line);
+    void remove(const QString& line);
+};
 
 class MapPhotoListModel : public QAbstractListModel
 {
