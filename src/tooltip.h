@@ -9,7 +9,7 @@
 class TooltipUtils
 {
 public:
-    static QRect adjustedRect(const QPoint& pos, const QSize& size);
+    static QRect adjustedRect(const QPoint& pos, const QSize& size, int shift);
 };
 
 template <class T>
@@ -33,6 +33,10 @@ protected:
 
     void leaveEvent(QEvent*) override {
         mTimerId = T::startTimer(600);
+    }
+
+    void showEvent(QShowEvent*) override {
+        mTimerId = T::startTimer(2100);
     }
 
     void hideEvent(QHideEvent*) override {
@@ -83,14 +87,14 @@ public:
 
     explicit GridToolTip(QWidget* parent = nullptr);
     void setFiles(const QStringList& files);
-    void showAt(const QPoint& pos);
+    void showAt(const QPoint& pos, int shift = 0);
 };
 
 class LabelTooltip : public AbstractToolTip<QLabel>
 {
 public:
     using AbstractToolTip::AbstractToolTip;
-    void showAt(const QPoint& pos);
+    void showAt(const QPoint& pos, int shift = 0);
 };
 
 #endif // TOOLTIP_H

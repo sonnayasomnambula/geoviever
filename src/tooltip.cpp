@@ -10,9 +10,9 @@
 #include "pics.h"
 #include "tooltip.h"
 
-QRect TooltipUtils::adjustedRect(const QPoint& pos, const QSize& size)
+QRect TooltipUtils::adjustedRect(const QPoint& pos, const QSize& size, int shift)
 {
-    QRect rect(pos, size);
+    QRect rect(pos + QPoint(shift, shift), size);
     QScreen* screen = QGuiApplication::screenAt(pos);
     if (!screen) screen = QGuiApplication::primaryScreen();
     QRect screenRect = screen->geometry();
@@ -82,7 +82,7 @@ void GridToolTip::moveSelection(int dx, int dy)
         setCurrentIndex(next);
 }
 
-void GridToolTip::showAt(const QPoint& pos)
+void GridToolTip::showAt(const QPoint& pos, int shift)
 {
     // https://stackoverflow.com/a/8771172
     int w = verticalHeader()->width() + 4; // +4 seems to be needed
@@ -97,7 +97,7 @@ void GridToolTip::showAt(const QPoint& pos)
         w += verticalScrollBar()->sizeHint().width();
     }
 
-    QRect rect = adjustedRect(pos, QSize(w, h));
+    QRect rect = adjustedRect(pos, QSize(w, h), shift);
 
     move(rect.topLeft());
     resize(rect.size());
@@ -150,8 +150,8 @@ void GridToolTip::setFiles(const QStringList& files)
     resizeColumnsToContents();
 }
 
-void LabelTooltip::showAt(const QPoint &pos)
+void LabelTooltip::showAt(const QPoint &pos, int shift)
 {
-    move(adjustedRect(pos, sizeHint()).topLeft());
+    move(adjustedRect(pos, sizeHint(), shift).topLeft());
     show();
 }

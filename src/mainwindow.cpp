@@ -398,7 +398,7 @@ void MainWindow::showTooltip(const QPoint& pos, QAbstractItemView* view)
 
     Exif::File exif(path);
     widget->setPixmap(exif.thumbnail(300, 200));
-    widget->showAt(pos);
+    widget->showAt(pos, 2);
 }
 
 void MainWindow::selectPicture(const QString& path)
