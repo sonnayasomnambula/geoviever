@@ -90,6 +90,7 @@ bool KeywordsModel::setData(const QModelIndex& index, const QVariant& value, int
     if (role == Qt::EditRole && index.column() == COLUMN_KEYWORD)
     {
         beginResetModel();
+        mData[index.row()].checkState = Qt::Checked;
         std::sort(mData.begin(), mData.end(), [](const Data& L, const Data& R){
             return L.keyword.toUpper() < R.keyword.toUpper(); });
         endResetModel();
