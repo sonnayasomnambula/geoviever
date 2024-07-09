@@ -105,6 +105,8 @@ protected:
         Super::initStyleOption(option, index);
         if (auto photo = ExifStorage::data(index.data().toString()))
             option->icon = Pics::fromBase64(photo->pixmap);
+        else
+            option->icon = Pics::transparent(ExifReader::thumbnailSize, ExifReader::thumbnailSize); // fix wrong sizeHint
         if (!option->icon.isNull())
             option->features |= QStyleOptionViewItem::HasDecoration;
     }

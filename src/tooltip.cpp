@@ -40,8 +40,12 @@ QVariant GridToolTip::Model::data(const QModelIndex& index, int role) const
         return {};
 
     if (role == Qt::DecorationRole)
+    {
         if (auto photo = ExifStorage::data(mData[internalIndex]))
             return Pics::fromBase64(photo->pixmap);
+        else
+            return Pics::transparent(ExifReader::thumbnailSize, ExifReader::thumbnailSize);
+    }
 
     if (role == FilePathRole)
         return mData[internalIndex];

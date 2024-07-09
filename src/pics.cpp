@@ -88,5 +88,12 @@ QPixmap fromImageReader(QImageReader *reader, int width, int height)
     return QPixmap::fromImageReader(reader);
 }
 
+QPixmap transparent(int w, int h)
+{
+    QPixmap pixmap(w, h);
+    pixmap.fill(Qt::transparent);
+    return pixmap;
+}
+
 } // namespace Pics
 
