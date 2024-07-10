@@ -282,6 +282,11 @@ MainWindow::MainWindow(QWidget *parent)
     engine->rootContext()->setContextProperty("selection", mMapSelectionModel);
     ui->map->setSource(QUrl("qrc:/map.qml"));
     loadSettings();
+
+    ui->tree->selectionModel()->setObjectName("treeSelectionModel");
+    ui->list->selectionModel()->setObjectName("listSelectionModel");
+    ui->checked->selectionModel()->setObjectName("checkedSelectionModel");
+    mMapSelectionModel->setObjectName("mapSelctionModel");
 }
 
 MainWindow::~MainWindow()
@@ -569,7 +574,7 @@ void MainWindow::syncSelection()
     if (auto source = qobject_cast<QItemSelectionModel*>(sender()))
     {
         QStringList selectedFiles;
-        QModelIndexList selection = source == ui->tree->selectionModel() ?
+        QModelIndexList selection = source->model() == mTreeModel ?
                                         source->selectedRows() :
                                         source->selectedIndexes();
         for (const QModelIndex& idx: selection)

@@ -1,0 +1,3 @@
+* rewrite map selection logic
+* make keywords dialog dockable
+* add AND/OR logic to keywords dialog
