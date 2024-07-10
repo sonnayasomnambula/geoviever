@@ -74,27 +74,16 @@ public:
     }
 };
 
-class FSPreviewDelegate : public QStyledItemDelegate
-{
-    using Super = QStyledItemDelegate;
-public:
-    using Super::Super;
-
-protected:
-    void initStyleOption(QStyleOptionViewItem* option, const QModelIndex& index) const override {
-        Super::initStyleOption(option, index);
-        if (auto model = qobject_cast<const QFileSystemModel*>(index.model()))
-            if (!model->isDir(index))
-                if (auto photo = ExifStorage::data(model->filePath(index)))
-                    option->icon = Pics::fromBase64(photo->pixmap);
-    }
-};
-
 class SLPreviewDelegate : public QStyledItemDelegate
 {
     using Super = QStyledItemDelegate;
+
+    // TODO use FileTreeModel with proxy model without any delegate
+    QFileSystemModel* mSourceModel = nullptr;
+
 public:
-    using Super::Super;
+    SLPreviewDelegate(QFileSystemModel* sourceModel, QObject* parent = nullptr) : Super(parent), mSourceModel(sourceModel) {}
+
     QString displayText(const QVariant& value, const QLocale& /*locale*/) const override {
         QDir dir(value.toString());
         return dir.isAbsolute() ? dir.dirName() : value.toString();
@@ -103,10 +92,11 @@ public:
 protected:
     void initStyleOption(QStyleOptionViewItem* option, const QModelIndex& index) const override {
         Super::initStyleOption(option, index);
-        if (auto photo = ExifStorage::data(index.data().toString()))
-            option->icon = Pics::fromBase64(photo->pixmap);
+        QString path = IFileListModel::path(index);
+        if (auto photo = ExifStorage::data(path))
+            option->icon = photo->pix32;
         else
-            option->icon = Pics::transparent(ExifReader::thumbnailSize, ExifReader::thumbnailSize); // fix wrong sizeHint
+            option->icon = qvariant_cast<QIcon>(mSourceModel->data(mSourceModel->index(path), Qt::DecorationRole));
         if (!option->icon.isNull())
             option->features |= QStyleOptionViewItem::HasDecoration;
     }
@@ -227,8 +217,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(comboDelegate, &ItemButtonDelegate::buttonPressed, ui->root, &QComboBox::removeItem);
 
     ui->tree->setItemDelegateForColumn(FileTreeModel::COLUMN_COORDS, new GeoCoordinateDelegate(this));
-    ui->list->setItemDelegate(new FSPreviewDelegate(this));
-    ui->checked->setItemDelegate(new SLPreviewDelegate(this));
+    ui->checked->setItemDelegate(new SLPreviewDelegate(mTreeModel, this));
 
     ui->tree->setModel(mTreeModel);
     ui->list->setModel(mTreeModel);

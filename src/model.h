@@ -14,6 +14,9 @@
 struct Photo;
 
 
+/// Generates a circle with a number in the middle
+/// (42)
+/// format: base64-encoded PNG with alpha channel
 class Bubbles
 {
     QHash<int, QString> mData;
@@ -43,6 +46,7 @@ private:
 };
 
 
+/// base class for a model containing files as their absolute paths
 class IFileListModel
 {
 public:
@@ -52,6 +56,7 @@ public:
 };
 
 
+/// main UI file system model (used for both treeview and listview)
 class FileTreeModel : public QFileSystemModel, public Checker, public IFileListModel
 {
     using Super = QFileSystemModel;
@@ -96,6 +101,9 @@ public:
     void remove(const QString& line);
 };
 
+
+/// main QML model
+/// combines nearby photos into one bucket
 class MapPhotoListModel : public QAbstractListModel, public IFileListModel
 {
     Q_OBJECT
@@ -184,12 +192,13 @@ private:
     QGeoCoordinate mCenter;
 };
 
+
 class MapSelectionModel : public QItemSelectionModel
 {
     using Super = QItemSelectionModel;
     Q_OBJECT
 
-    Q_PROPERTY(int currentRow WRITE setCurrentRow)
+    Q_PROPERTY(int currentRow READ currentRow WRITE setCurrentRow)
     Q_PROPERTY(int hoveredRow MEMBER mHoveredRow WRITE setHoveredRow)
 
 public:
@@ -198,6 +207,7 @@ public:
     void setCurrentRow(int row);
     void setHoveredRow(int row);
 
+    int currentRow() const;
     int howeredRow() const;
 
 private:

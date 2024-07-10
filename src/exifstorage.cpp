@@ -42,7 +42,11 @@ QSharedPointer<Photo> ExifReader::load(const QString& path)
 
     QPixmap pix = exif.thumbnail(thumbnailSize, thumbnailSize);
     if (!pix.isNull())
-        data->pixmap = Pics::toBase64(pix, "JPEG");
+    {
+        data->pix32 = pix.width() == 32 ? pix : pix.scaled(32, 32, Qt::KeepAspectRatio);
+        data->pix16 = pix.scaled(16, 16, Qt::KeepAspectRatio);
+        data->pixBase64 = Pics::toBase64(pix, "JPEG");
+    }
 
     return data;
 }
@@ -131,23 +135,6 @@ QSharedPointer<Photo> ExifStorage::data(const QString& path)
     auto i = storage->mData.constFind(path);
     if (i != storage->mData.constEnd())
         return *i;
-
-    if (!storage->mInProgress.contains(path))
-    {
-        storage->mInProgress.insert(path);
-        emit storage->parse(path);
-    }
-
-    return {};
-}
-
-QPointF ExifStorage::coords(const QString& path)
-{
-    auto storage = instance();
-    QMutexLocker lock(&storage->mMutex);
-    auto i = storage->mData.constFind(path);
-    if (i != storage->mData.constEnd())
-        return (*i)->position;
 
     if (!storage->mInProgress.contains(path))
     {

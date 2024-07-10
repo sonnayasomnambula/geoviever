@@ -1,4 +1,5 @@
 #include <QBuffer>
+#include <QIcon>
 #include <QImageReader>
 #include <QPixmap>
 
@@ -24,15 +25,6 @@ QString toBase64(const QPixmap& pixmap, const char* format)
     QString base64("data:image/jpg;base64,");
     base64.append(QString::fromLatin1(raw.toBase64().data()));
     return base64;
-}
-
-QPixmap fromBase64(const QString& base64)
-{
-    static const int dataIndex = QString("data:image/jpg;base64,").size();
-    QByteArray raw = QByteArray::fromBase64(base64.toLatin1().mid(dataIndex));
-    QPixmap pix;
-    pix.loadFromData(raw);
-    return pix;
 }
 
 QPixmap fromImageReader(QImageReader* reader, int width, int height, Exif::Orientation orientation)
@@ -88,11 +80,12 @@ QPixmap fromImageReader(QImageReader *reader, int width, int height)
     return QPixmap::fromImageReader(reader);
 }
 
-QPixmap transparent(int w, int h)
+QIcon createIcon(const QPixmap& pix1, const QPixmap& pix2)
 {
-    QPixmap pixmap(w, h);
-    pixmap.fill(Qt::transparent);
-    return pixmap;
+    QIcon icon;
+    icon.addPixmap(pix1);
+    icon.addPixmap(pix2);
+    return icon;
 }
 
 } // namespace Pics

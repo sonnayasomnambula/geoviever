@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QMap>
 #include <QMutex>
+#include <QPixmap>
 #include <QPointF>
 #include <QSet>
 #include <QThread>
@@ -16,7 +17,8 @@ struct Photo
     QPointF position;
     Exif::Orientation orientation;
     QString keywords;
-    QString pixmap; // base64 thumbnail
+    QPixmap pix16, pix32;
+    QString pixBase64;
 };
 
 bool operator ==(const ExifData& L, const ExifData& R);
@@ -24,6 +26,8 @@ bool operator !=(const ExifData& L, const ExifData& R);
 
 Q_DECLARE_METATYPE(QSharedPointer<Photo>)
 
+
+/// thread worker
 class ExifReader : public QObject
 {
     Q_OBJECT
@@ -55,7 +59,6 @@ public:
     static void destroy();
 
     static QSharedPointer<Photo> data(const QString& path);
-    Q_DECL_DEPRECATED static QPointF coords(const QString& path);
 
     static QStringList keywords();
     static QStringList keywords(const QString& file);

@@ -18,7 +18,7 @@
 
 bool operator ==(const Photo& L, const Photo& R)
 {
-    return L.path == R.path && L.pixmap == R.pixmap && L.position == R.position;
+    return L.path == R.path && L.pixBase64 == R.pixBase64 && L.position == R.position;
 }
 
 bool operator !=(const Photo& L, const Photo& R)
@@ -147,6 +147,10 @@ QVariant FileTreeModel::data(const QModelIndex& index, int role) const
         return {};
     }
 
+    if (role == Qt::DecorationRole && index.column() == 0 && !isDir(index))
+        if (auto photo = ExifStorage::data(filePath(index)))
+            return Pics::createIcon(photo->pix32, photo->pix16);
+
     return Super::data(index, role);
 }
 
@@ -268,7 +272,7 @@ QVariant MapPhotoListModel::data(const QModelIndex& index, int role) const
     const Bucket& bucket = mBuckets.at(index.row());
 
     if (role == Role::Pixmap)
-        return bucket.photos.size() == 1 ? bucket.photos.first()->pixmap : mBubbles.bubble(bucket.photos.size());
+        return bucket.photos.size() == 1 ? bucket.photos.first()->pixBase64 : mBubbles.bubble(bucket.photos.size());
 
     if (role == Role::Path)
         return bucket.photos.size() ? QVariant(bucket.photos.first()->path) : QVariant();
@@ -421,7 +425,7 @@ bool MapPhotoListModel::Bucket::remove(const QString& path)
 
 bool MapPhotoListModel::Bucket::isValid(const QSharedPointer<Photo> &photo)
 {
-    return photo && !photo->path.isEmpty() && !photo->pixmap.isEmpty() && !photo->position.isNull();
+    return photo && !photo->path.isEmpty() && !photo->pixBase64.isEmpty() && !photo->position.isNull();
 }
 
 QStringList MapPhotoListModel::Bucket::files() const
@@ -579,7 +583,14 @@ void MapSelectionModel::setHoveredRow(int row)
     mHoveredRow = row;
 }
 
+int MapSelectionModel::currentRow() const
+{
+    return currentIndex().row();
+}
+
 int MapSelectionModel::howeredRow() const
 {
     return mHoveredRow;
 }
+
+
