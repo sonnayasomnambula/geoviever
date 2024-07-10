@@ -95,6 +95,11 @@ void Checker::updateChildrenCheckState(const QModelIndex &index)
     }
 }
 
+QString IFileListModel::path(const QModelIndex& index)
+{
+    return index.data(FilePathRole).toString();
+}
+
 FileTreeModel::FileTreeModel(QObject *parent)
     : Super(parent)
 {
@@ -168,6 +173,11 @@ QVariant FileTreeModel::headerData(int section, Qt::Orientation orientation, int
     return Super::headerData(section, orientation, role);
 }
 
+QModelIndex FileTreeModel::index(const QString& path) const
+{
+    return Super::index(path);
+}
+
 bool FileTreeModel::setCheckState(const QModelIndex& index, const QVariant& value)
 {
     if (!index.isValid())
@@ -203,6 +213,19 @@ const QStringList FileTreeModel::entryList(const QString &dir, const QStringList
         all.append(entryList(directory.absoluteFilePath(subdir), nameFilters));
 
     return all;
+}
+
+QVariant PhotoListModel::data(const QModelIndex& index, int role) const
+{
+    if (role == FilePathRole)
+        return Super::data(index, Qt::DisplayRole);
+    return Super::data(index, role);
+}
+
+QModelIndex PhotoListModel::index(const QString& data) const
+{
+    int row = stringList().indexOf(data);
+    return row == -1 ? QModelIndex() : Super::index(row);
 }
 
 void PhotoListModel::insert(const QString& line)
@@ -242,12 +265,16 @@ QVariant MapPhotoListModel::data(const QModelIndex& index, int role) const
     if (!ok)
         return {};
 
-    int row = index.row();
+    const Bucket& bucket = mBuckets.at(index.row());
 
-    if (role == Role::Index)
-        return row;
+    if (role == Role::Pixmap)
+        return bucket.photos.size() == 1 ? bucket.photos.first()->pixmap : mBubbles.bubble(bucket.photos.size());
 
-    const Bucket& bucket = mBuckets.at(row);
+    if (role == Role::Path)
+        return bucket.photos.size() ? QVariant(bucket.photos.first()->path) : QVariant();
+
+    if (role == Role::Files)
+        return bucket.files();
 
     if (role == Role::Latitude)
         return bucket.position.x();
@@ -255,23 +282,17 @@ QVariant MapPhotoListModel::data(const QModelIndex& index, int role) const
     if (role == Role::Longitude)
         return bucket.position.y();
 
-    if (role == Role::Pixmap)
-        return bucket.photos.size() == 1 ? bucket.photos.first()->pixmap : mBubbles.bubble(bucket.photos.size());
-
-    if (role == Role::Files)
-        return bucket.files();
-
     return {};
 }
 
 QHash<int, QByteArray> MapPhotoListModel::roleNames() const
 {
     QHash<int, QByteArray> roles;
-    roles[Role::Index] = "_index_";
+    roles[Role::Pixmap] = "_pixmap_";
+    roles[Role::Path] = "_path_";
+    roles[Role::Files] = "_files_";
     roles[Role::Latitude] = "_latitude_";
     roles[Role::Longitude] = "_longitude_";
-    roles[Role::Pixmap] = "_pixmap_";
-    roles[Role::Files] = "_files_";
     return roles;
 }
 
@@ -326,7 +347,7 @@ void MapPhotoListModel::setCenter(const QPointF& center)
     setCenter(QGeoCoordinate(center.x(), center.y()));
 }
 
-QModelIndex MapPhotoListModel::index(const QString& path)
+QModelIndex MapPhotoListModel::index(const QString& path) const
 {
     for (int row = 0; row < mBuckets.size(); ++row)
     {
@@ -342,21 +363,6 @@ QModelIndex MapPhotoListModel::index(const QString& path)
     return {};
 }
 
-void MapPhotoListModel::setCurrentRow(int row)
-{
-    if (row != mCurrentRow)
-    {
-        mCurrentRow = row;
-        emit currentRowChanged(mCurrentRow);
-    }
-}
-
-void MapPhotoListModel::setHoveredRow(int row)
-{
-    if (row != mHoveredRow)
-        mHoveredRow = row;
-}
-
 void MapPhotoListModel::updateBuckets()
 {
     BucketList buckets;
@@ -367,8 +373,7 @@ void MapPhotoListModel::updateBuckets()
     if (buckets != mBuckets)
     {
         mBuckets.updateFrom(buckets);
-        setCurrentRow(-1);
-        setHoveredRow(-1);
+        emit updated();
     }
 }
 
@@ -563,4 +568,18 @@ bool MapPhotoListModel::BucketList::operator !=(const BucketList& other) const
     return !(*this == other);
 }
 
+void MapSelectionModel::setCurrentRow(int row)
+{    
+    if (row != currentIndex().row())
+        setCurrentIndex(model()->index(row, 0), Clear | Current | Select);
+}
 
+void MapSelectionModel::setHoveredRow(int row)
+{
+    mHoveredRow = row;
+}
+
+int MapSelectionModel::howeredRow() const
+{
+    return mHoveredRow;
+}

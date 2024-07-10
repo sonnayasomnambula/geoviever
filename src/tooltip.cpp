@@ -7,6 +7,7 @@
 #include <cmath>
 
 #include "exifstorage.h"
+#include "model.h"
 #include "pics.h"
 #include "tooltip.h"
 
@@ -47,7 +48,7 @@ QVariant GridToolTip::Model::data(const QModelIndex& index, int role) const
             return Pics::transparent(ExifReader::thumbnailSize, ExifReader::thumbnailSize);
     }
 
-    if (role == FilePathRole)
+    if (role == IFileListModel::FilePathRole)
         return mData[internalIndex];
 
     if (role == Qt::SizeHintRole)

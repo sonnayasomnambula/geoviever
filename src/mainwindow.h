@@ -11,6 +11,8 @@ class MainWindow;
 }
 
 class QComboBox;
+class QItemSelection;
+class QItemSelectionModel;
 class QStringListModel;
 QT_END_NAMESPACE
 
@@ -18,6 +20,7 @@ class FileTreeModel;
 class KeywordsDialog;
 class PhotoListModel;
 class MapPhotoListModel;
+class MapSelectionModel;
 
 /// combobox item with [x] button
 class ItemButtonDelegate : public QItemDelegate
@@ -70,7 +73,6 @@ private:
 
     void showMapTooltip(const QPoint& pos);
     void showTooltip(const QPoint& pos, QAbstractItemView* view);
-    void selectPicture(const QString& path);
 
     QStringList history() const;
     void setHistory(const QStringList& history);
@@ -80,7 +82,16 @@ private:
     void keywordChecked(const QString& keyword, Qt::CheckState state);
     void updateKeywordsDialog();
     void saveKeywords();
-    void updateSelection(const QModelIndex& idx);
+
+    void updatePicture();
+
+    void syncSelection();
+    void applySelection(QAbstractItemView* to);
+    void applySelection(QItemSelectionModel* to);
+
+    void syncCurrentIndex(const QModelIndex& currentIndex);
+    void applyCurrentIndex(QAbstractItemView* to);
+    void applyCurrentIndex(QItemSelectionModel* to, QAbstractItemView* view = nullptr);
 
     QAbstractItemView* currentView() const;
     QModelIndexList currentSelection() const;
@@ -95,7 +106,6 @@ private slots:
     void on_actionCheck_triggered();
     void on_actionUncheck_triggered();
     void on_actionEditKeywords_triggered(bool checked);
-
     void on_actionIconView_toggled(bool toggled);
 
 private:
@@ -103,6 +113,10 @@ private:
     FileTreeModel*    mTreeModel = nullptr;
     PhotoListModel* mCheckedModel = nullptr;
     MapPhotoListModel* mMapModel = nullptr;
+    MapSelectionModel* mMapSelectionModel = nullptr;
+
+    QStringList mSelection;
+    QString mCurrent;
 };
 
 #endif // MAINWINDOW_H

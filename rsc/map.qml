@@ -9,8 +9,8 @@ Rectangle {
         id: map
         anchors.fill: parent
         plugin: Plugin { name: "osm"; }
-        center:  QtPositioning.coordinate(59.91, 10.75) // Oslo
-        zoomLevel: 5
+        center:  QtPositioning.coordinate(59.95, 30.32)
+        zoomLevel: 11
 
         CoordinateAnimation {
             id: centerAnimation;
@@ -67,16 +67,16 @@ Rectangle {
                         id: overlay
                         anchors.fill: pic
                         source: pic
-                        color: controller.currentRow === _index_ ? "#40000040" : "#00000000"
+                        color: selection.currentIndex.row === index ? "#40000040" : "#00000000"
                     }
 
                     MouseArea {
                         anchors.fill: parent
                         hoverEnabled: true
 
-                        onClicked: controller.currentRow = _index_;
-                        onEntered: controller.hoveredRow = _index_;
-                        onExited: controller.hoveredRow = -1;
+                        onClicked: selection.currentRow = index;
+                        onEntered: selection.hoveredRow = index;
+                        onExited: selection.hoveredRow = -1;
                     }
                 }
             }

@@ -3,6 +3,7 @@
 
 #include <QFileSystemModel>
 #include <QGeoCoordinate>
+#include <QItemSelectionModel>
 #include <QPersistentModelIndex>
 #include <QSortFilterProxyModel>
 #include <QStringListModel>
@@ -42,8 +43,18 @@ private:
 };
 
 
-class FileTreeModel : public QFileSystemModel, public Checker
+class IFileListModel
 {
+public:
+    enum { FilePathRole = QFileSystemModel::FilePathRole };
+    virtual QModelIndex index(const QString& path) const = 0;
+    static QString path(const QModelIndex& index);
+};
+
+
+class FileTreeModel : public QFileSystemModel, public Checker, public IFileListModel
+{
+    using Super = QFileSystemModel;
     Q_OBJECT
 
 signals:
@@ -58,45 +69,49 @@ public:
     QVariant data(const QModelIndex& index, int role) const override;
     bool setData(const QModelIndex& index, const QVariant& value, int role) override;
     QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
+    QModelIndex index(const QString& path) const override;
+    using Super::index;
 
     static const QStringList entryList(const QString& dir, const QStringList& nameFilters);
 
 private:
-    using Super = QFileSystemModel;
-
     bool setCheckState(const QModelIndex& index, const QVariant& value);
     QStringList entryList(const QString& dir) const;
 };
 
-class PhotoListModel : public QStringListModel
+
+class PhotoListModel : public QStringListModel, public IFileListModel
 {
     using Super = QStringListModel;
+    Q_OBJECT
 
 public:
     using Super::Super;
+
+    QVariant data(const QModelIndex& index, int role) const override;
+    QModelIndex index(const QString& data) const override;
+    using Super::index;
 
     void insert(const QString& line);
     void remove(const QString& line);
 };
 
-class MapPhotoListModel : public QAbstractListModel
+class MapPhotoListModel : public QAbstractListModel, public IFileListModel
 {
     Q_OBJECT
 
     // TODO extract zoom & center to avoid qml -> cpp -> qml signal loop
     Q_PROPERTY(qreal zoom MEMBER mZoom WRITE setZoom NOTIFY zoomChanged)
     Q_PROPERTY(QGeoCoordinate center MEMBER mCenter WRITE setCenter NOTIFY centerChanged)
-    Q_PROPERTY(int currentRow MEMBER mCurrentRow WRITE setCurrentRow NOTIFY currentRowChanged)
-    Q_PROPERTY(int hoveredRow MEMBER mHoveredRow WRITE setHoveredRow)
     Q_PROPERTY(int thumbnailSize MEMBER THUMBNAIL_SIZE CONSTANT)
 
 signals:
     void zoomChanged();
     void centerChanged();
-    void currentRowChanged(int row);
+    void updated();
 
 public:
-    struct Role { enum { Index = Qt::UserRole, Latitude, Longitude, Pixmap, Files }; };
+    struct Role { enum { Pixmap = Qt::DecorationRole, Path = FilePathRole, Files, Latitude, Longitude }; };
 
     MapPhotoListModel();
 
@@ -115,10 +130,7 @@ public:
     void setCenter(const QPointF& center);
 
     using QAbstractListModel::index;
-    QModelIndex index(const QString& path);
-
-    void setCurrentRow(int row);
-    void setHoveredRow(int row);
+    QModelIndex index(const QString& path) const override;
 
     static constexpr int THUMBNAIL_SIZE = 32;
 
@@ -170,8 +182,25 @@ private:
 
     qreal mZoom = 5;
     QGeoCoordinate mCenter;
+};
 
-    int mCurrentRow = -1;
+class MapSelectionModel : public QItemSelectionModel
+{
+    using Super = QItemSelectionModel;
+    Q_OBJECT
+
+    Q_PROPERTY(int currentRow WRITE setCurrentRow)
+    Q_PROPERTY(int hoveredRow MEMBER mHoveredRow WRITE setHoveredRow)
+
+public:
+    using Super::Super;
+
+    void setCurrentRow(int row);
+    void setHoveredRow(int row);
+
+    int howeredRow() const;
+
+private:
     int mHoveredRow = -1;
 };
 

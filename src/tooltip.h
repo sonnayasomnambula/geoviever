@@ -83,8 +83,6 @@ protected:
     void keyPressEvent(QKeyEvent* e) override;
 
 public:
-    enum { FilePathRole = Qt::UserRole };
-
     explicit GridToolTip(QWidget* parent = nullptr);
     void setFiles(const QStringList& files);
     void showAt(const QPoint& pos, int shift = 0);

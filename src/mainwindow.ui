@@ -35,7 +35,7 @@
             <property name="editable">
              <bool>true</bool>
             </property>
-            <property name="placeholderText">
+            <property name="placeholderText" stdset="0">
              <string>&lt;root&gt;</string>
             </property>
            </widget>
@@ -177,6 +177,9 @@
         </property>
        </widget>
        <widget class="QListView" name="checked">
+        <property name="selectionMode">
+         <enum>QAbstractItemView::ExtendedSelection</enum>
+        </property>
         <property name="gridSize">
          <size>
           <width>100</width>
@@ -198,7 +201,7 @@
      <x>0</x>
      <y>0</y>
      <width>800</width>
-     <height>22</height>
+     <height>21</height>
     </rect>
    </property>
   </widget>
