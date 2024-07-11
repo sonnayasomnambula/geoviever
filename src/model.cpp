@@ -100,6 +100,20 @@ QString IFileListModel::path(const QModelIndex& index)
     return index.data(FilePathRole).toString();
 }
 
+QStringList IFileListModel::path(const QModelIndexList& indexes)
+{
+    QStringList list;
+    for (const auto& i: indexes)
+    {
+        QString p = path(i);
+        if (!list.contains(p))
+        {
+            list.append(p);
+        }
+    }
+    return list;
+}
+
 FileTreeModel::FileTreeModel(QObject *parent)
     : Super(parent)
 {

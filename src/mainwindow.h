@@ -80,18 +80,18 @@ private:
     enum class CreateOption { Never, IfNotExists };
     KeywordsDialog* keywordsDialog(CreateOption createOption = CreateOption::IfNotExists);
     void keywordChecked(const QString& keyword, Qt::CheckState state);
-    void updateKeywordsDialog();
+    void updateKeywordsDialog(const QStringList& selectedFiles);
     void saveKeywords();
 
-    void updatePicture();
+    void updatePicture(const QString& path);
 
     void syncSelection();
-    void applySelection(QAbstractItemView* to);
-    void applySelection(QItemSelectionModel* to);
+    void applySelection(QAbstractItemView* to, const QStringList& selectedFiles);
+    void applySelection(QItemSelectionModel* to, const QStringList& selectedFiles);
 
     void syncCurrentIndex(const QModelIndex& currentIndex);
-    void applyCurrentIndex(QAbstractItemView* to);
-    void applyCurrentIndex(QItemSelectionModel* to, QAbstractItemView* view = nullptr);
+    void applyCurrentIndex(QAbstractItemView* to, const QString& path);
+    void applyCurrentIndex(QItemSelectionModel* to, const QString& path, QAbstractItemView* view = nullptr);
 
     QAbstractItemView* currentView() const;
     QModelIndexList currentSelection() const;
@@ -115,8 +115,8 @@ private:
     MapPhotoListModel* mMapModel = nullptr;
     MapSelectionModel* mMapSelectionModel = nullptr;
 
-    QStringList mSelection;
-    QString mCurrent;
+    QMap<QItemSelectionModel*, QModelIndexList> mSelection;
+    QMap<QItemSelectionModel*, QModelIndex> mCurrentIndex;
 };
 
 #endif // MAINWINDOW_H

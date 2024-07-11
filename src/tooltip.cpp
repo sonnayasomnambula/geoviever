@@ -142,6 +142,8 @@ GridToolTip::GridToolTip(QWidget* parent) : AbstractToolTip(parent)
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     setShowGrid(false);
+
+    selectionModel()->setObjectName("tooltipSelectionModel");
 }
 
 void GridToolTip::setFiles(const QStringList& files)

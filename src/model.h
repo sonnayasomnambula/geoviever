@@ -53,6 +53,7 @@ public:
     enum { FilePathRole = QFileSystemModel::FilePathRole };
     virtual QModelIndex index(const QString& path) const = 0;
     static QString path(const QModelIndex& index);
+    static QStringList path(const QModelIndexList& indexes);
 };
 
 
@@ -103,7 +104,7 @@ public:
 
 
 /// main QML model
-/// combines nearby photos into one bucket
+/// combines nearby photos into one bucket, so it breaking the rule '1 QModelIndex <=> 1 file'
 class MapPhotoListModel : public QAbstractListModel, public IFileListModel
 {
     Q_OBJECT

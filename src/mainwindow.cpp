@@ -437,7 +437,8 @@ KeywordsDialog* MainWindow::keywordsDialog(CreateOption createOption)
     connect(dialog, &KeywordsDialog::apply, this, &MainWindow::saveKeywords);
 
     if (currentView()->selectionModel()->hasSelection())
-        updateKeywordsDialog();
+        updateKeywordsDialog(mTreeModel->path(currentSelection()));
+
 
     return dialog;
 }
@@ -469,14 +470,14 @@ void MainWindow::keywordChecked(const QString& keyword, Qt::CheckState)
     }
 }
 
-void MainWindow::updateKeywordsDialog()
+void MainWindow::updateKeywordsDialog(const QStringList& selectedFiles)
 {
     if (auto dialog = keywordsDialog(CreateOption::Never)) {
         if (dialog->mode() == KeywordsDialog::Mode::Edit) {
 
             QSet<QString> common, partially;
 
-            for (const QString& path: mSelection) {
+            for (const QString& path: selectedFiles) {
                 if (QFileInfo(path).isDir()) continue;
                 QString keywordsTag;
                 if (auto photo = ExifStorage::data(path))
@@ -507,12 +508,14 @@ void MainWindow::saveKeywords()
 {
     Settings settings;
 
-    if (mSelection.isEmpty())
+    if (!currentView()->selectionModel()->hasSelection())
         return;
+
+    QStringList selectedFiles = mTreeModel->path(currentSelection());
 
     if (!settings.keywordDialog.overwriteSilently) {
         using QMBox = QMessageBox;
-        QMBox box(QMBox::Question, "", tr("Overwrite %1 file(s)?").arg(mSelection.size()), QMBox::Yes | QMBox::No, this);
+        QMBox box(QMBox::Question, "", tr("Overwrite %1 file(s)?").arg(selectedFiles.size()), QMBox::Yes | QMBox::No, this);
         box.setCheckBox(new QCheckBox(tr("Do not ask me next time")));
         int ansver = box.exec();
         settings.keywordDialog.overwriteSilently = box.checkBox()->isChecked();
@@ -522,7 +525,7 @@ void MainWindow::saveKeywords()
 
     QGuiApplication::setOverrideCursor(Qt::WaitCursor);
 
-    for (const auto& path: mSelection) {
+    for (const auto& path: selectedFiles) {
         if (QFileInfo(path).isDir()) continue;
         Exif::File file;
         if (!file.load(path)) {
@@ -546,10 +549,8 @@ void MainWindow::saveKeywords()
     keywordsDialog()->model()->setExtraFlags(Qt::NoItemFlags); // reset
 }
 
-void MainWindow::updatePicture()
+void MainWindow::updatePicture(const QString& path)
 {
-    const QString& path = mCurrent;
-
     if (path.isEmpty() || QFileInfo(path).isDir())
     {
         ui->picture->setPath("");
@@ -573,37 +574,36 @@ void MainWindow::syncSelection()
 {
     if (auto source = qobject_cast<QItemSelectionModel*>(sender()))
     {
-        QStringList selectedFiles;
-        QModelIndexList selection = source->model() == mTreeModel ?
-                                        source->selectedRows() :
-                                        source->selectedIndexes();
-        for (const QModelIndex& idx: selection)
-            selectedFiles.append(IFileListModel::path(idx));
-
-        if (mSelection != selectedFiles)
+        auto& previousSelection = mSelection[source];
+        auto currentSelection = source->model() == mTreeModel ? source->selectedRows() : source->selectedIndexes();
+        if (previousSelection != currentSelection)
         {
-            mSelection = selectedFiles;
+            previousSelection = currentSelection;
+
+            QStringList selectedFiles = IFileListModel::path(currentSelection);
+
+            // qDebug() << __func__ << "from" << source->objectName() << selectedFiles;
 
             if (source != ui->tree->selectionModel())
-                applySelection(ui->tree);
+                applySelection(ui->tree, selectedFiles);
             if (source != ui->list->selectionModel())
-                applySelection(ui->list);
+                applySelection(ui->list, selectedFiles);
             if (source != ui->checked->selectionModel())
-                applySelection(ui->checked);
+                applySelection(ui->checked, selectedFiles);
             if (source != mMapSelectionModel)
-                applySelection(mMapSelectionModel);
+                applySelection(mMapSelectionModel, selectedFiles);
 
-            updateKeywordsDialog();
+            updateKeywordsDialog(selectedFiles);
         }
     }
 }
 
-void MainWindow::applySelection(QAbstractItemView* to)
+void MainWindow::applySelection(QAbstractItemView* to, const QStringList& selectedFiles)
 {
-    applySelection(to->selectionModel());
+    applySelection(to->selectionModel(), selectedFiles);
 }
 
-void MainWindow::applySelection(QItemSelectionModel *to)
+void MainWindow::applySelection(QItemSelectionModel* to, const QStringList& selectedFiles)
 {
     if (!to || !to->model())
     {
@@ -613,13 +613,24 @@ void MainWindow::applySelection(QItemSelectionModel *to)
 
     if (auto model = dynamic_cast<IFileListModel*>(to->model()))
     {
-        QItemSelection selection;
-        for (const QString& path: mSelection)
-            selection.select(model->index(path), model->index(path));
+        QModelIndexList selection;
+        for (const QString& path: selectedFiles)
+            selection.append(model->index(path));
 
-        using QSM = QItemSelectionModel;
+        QModelIndexList& previousSelection = mSelection[to];
+        if (previousSelection != selection)
+        {
+            // qDebug() << __func__ << "to" << to->objectName() << selectedFiles;
 
-        to->select(selection, QSM::Clear | QSM::Select | QSM::Rows);
+            using QSM = QItemSelectionModel;
+
+            previousSelection = selection;
+
+            QItemSelection range;
+            for (const auto& i : selection)
+                range.select(i, i);
+            to->select(range, QSM::Clear | QSM::Select | QSM::Rows);
+        }
     }
 }
 
@@ -627,32 +638,36 @@ void MainWindow::syncCurrentIndex(const QModelIndex& currentIndex)
 {
     if (auto source = qobject_cast<QItemSelectionModel*>(sender()))
     {
-        QString current = IFileListModel::path(currentIndex);
-
-        if (mCurrent != current)
+        QModelIndex& previousIndex = mCurrentIndex[source];
+        if (previousIndex != currentIndex)
         {
-            mCurrent = current;
+
+            previousIndex = currentIndex;
+            QString path = IFileListModel::path(currentIndex);
+
+            // qDebug() << __func__ << "from" << source->objectName() << path;
 
             if (source != ui->tree->selectionModel())
-                applyCurrentIndex(ui->tree);
+                applyCurrentIndex(ui->tree, path);
             if (source != ui->list->selectionModel())
-                applyCurrentIndex(ui->list);
+                applyCurrentIndex(ui->list, path);
             if (source != ui->checked->selectionModel())
-                applyCurrentIndex(ui->checked);
+                applyCurrentIndex(ui->checked, path);
             if (source != mMapSelectionModel)
-                applyCurrentIndex(mMapSelectionModel);
+                applyCurrentIndex(mMapSelectionModel, path);
 
-            updatePicture();
+            updatePicture(path);
         }
+
     }
 }
 
-void MainWindow::applyCurrentIndex(QAbstractItemView *to)
+void MainWindow::applyCurrentIndex(QAbstractItemView* to, const QString& path)
 {
-    applyCurrentIndex(to->selectionModel(), to);
+    applyCurrentIndex(to->selectionModel(), path, to);
 }
 
-void MainWindow::applyCurrentIndex(QItemSelectionModel *to, QAbstractItemView *view)
+void MainWindow::applyCurrentIndex(QItemSelectionModel* to, const QString& path, QAbstractItemView* view)
 {
     if (!to || !to->model())
     {
@@ -662,14 +677,20 @@ void MainWindow::applyCurrentIndex(QItemSelectionModel *to, QAbstractItemView *v
 
     if (auto model = dynamic_cast<IFileListModel*>(to->model()))
     {
-        QModelIndex current = model->index(mCurrent);
+        QModelIndex& previous = mCurrentIndex[to];
+        QModelIndex current = model->index(path);
+        if (previous != current)
+        {
+            using QSM = QItemSelectionModel;
 
-        using QSM = QItemSelectionModel;
+            // qDebug() << __func__ << "to" << to->objectName() << path;
 
-        to->setCurrentIndex(current, QSM::Current);
+            previous = current;
+            to->setCurrentIndex(current, QSM::Current);
 
-        if (view && view->isVisible())
-            view->scrollTo(to->currentIndex());
+            if (view && view->isVisible())
+                view->scrollTo(to->currentIndex());
+        }
     }
 }
 
@@ -776,7 +797,7 @@ void MainWindow::on_actionEditKeywords_triggered(bool checked)
     if (keywordsDialog()->mode() == KeywordsDialog::Mode::Filter)
         keywordsDialog()->model()->setChecked({}, {});
     else
-        updateKeywordsDialog();
+        updateKeywordsDialog(mTreeModel->path(currentSelection()));
 
     keywordsDialog()->show();
 }
