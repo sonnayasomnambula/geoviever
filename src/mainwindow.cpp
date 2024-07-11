@@ -615,7 +615,11 @@ void MainWindow::applySelection(QItemSelectionModel* to, const QStringList& sele
     {
         QModelIndexList selection;
         for (const QString& path: selectedFiles)
-            selection.append(model->index(path));
+        {
+            auto i = model->index(path);
+            if (i.isValid())
+                selection.append(model->index(path));
+        }
 
         QModelIndexList& previousSelection = mSelection[to];
         if (previousSelection != selection)
