@@ -690,10 +690,14 @@ void MainWindow::applyCurrentIndex(QItemSelectionModel* to, const QString& path,
             // qDebug() << __func__ << "to" << to->objectName() << path;
 
             previous = current;
+
+            if (view == ui->list)
+                ui->list->setRootIndex(current.parent());
+
             to->setCurrentIndex(current, QSM::Current);
 
             if (view && view->isVisible())
-                view->scrollTo(to->currentIndex());
+                view->scrollTo(current);
         }
     }
 }
