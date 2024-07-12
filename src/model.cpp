@@ -249,6 +249,9 @@ QModelIndex PhotoListModel::index(const QString& data) const
 void PhotoListModel::insert(const QString& line)
 {
     auto sl = stringList();
+    if (sl.contains(line))
+        return;
+
     int row = 0;
     while (row < sl.size() && line > sl[row])
         ++row;
@@ -511,12 +514,15 @@ bool MapPhotoListModel::BucketList::insert(const QSharedPointer<Photo>& photo, d
         double thumb_size = pixel_size * 32; // TODO magic constant
         if (dist < thumb_size)
         {
-            bucket.insert(photo);
+            if (!bucket.insert(photo))
+                return false;
+
             if (mModel)
             {
                 QModelIndex index = mModel->index(row, 0);
                 emit mModel->dataChanged(index, index, { Role::Latitude, Role::Longitude, Role::Pixmap });
             }
+
             return true;
         }
     }
