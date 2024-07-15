@@ -53,6 +53,7 @@ struct Settings : AbstractSettings
     struct {
         Geometry geometry = "keywordDialog/geometry";
         Tag<bool> overwriteSilently = "keywordDialog/overwriteSilently";
+        Tag<bool> orLogic = "keywordDialog/orLogic";
     } keywordDialog;
 };
 
@@ -345,7 +346,10 @@ void MainWindow::saveSettings()
     settings.filter = ui->filter->text();
 
     if (auto dialog = keywordsDialog(CreateOption::Never))
+    {
         settings.keywordDialog.geometry.save(dialog);
+        settings.keywordDialog.orLogic = dialog->button(KeywordsDialog::Button::Or)->isChecked();
+    }
 }
 
 void MainWindow::showMapTooltip(const QPoint& pos)
@@ -424,6 +428,7 @@ KeywordsDialog* MainWindow::keywordsDialog(CreateOption createOption)
 
     dialog = new KeywordsDialog(this);
     settings.keywordDialog.geometry.restore(dialog);
+    dialog->button(KeywordsDialog::Button::Or)->setChecked(settings.keywordDialog.orLogic);
 
     connect(ExifStorage::instance(), &ExifStorage::keywordAdded, this, [this](const QString& keyword, int count){
         dialog->model()->insert(keyword, count); });
@@ -433,7 +438,7 @@ KeywordsDialog* MainWindow::keywordsDialog(CreateOption createOption)
     dialog->view()->resizeColumnToContents(KeywordsModel::COLUMN_KEYWORD); // QHeaderView::ResizeMode doesn't seem to work
     dialog->view()->resizeColumnToContents(KeywordsModel::COLUMN_KEYWORD_COUNT); // TODO incapsulate this
 
-    connect(dialog, &KeywordsDialog::checkChanged, this, &MainWindow::keywordChecked);
+    connect(dialog, &KeywordsDialog::changed, this, &MainWindow::keywordsChanged);
     connect(dialog, &KeywordsDialog::apply, this, &MainWindow::saveKeywords);
 
     if (currentView()->selectionModel()->hasSelection())
@@ -443,30 +448,23 @@ KeywordsDialog* MainWindow::keywordsDialog(CreateOption createOption)
     return dialog;
 }
 
-void MainWindow::keywordChecked(const QString& keyword, Qt::CheckState)
+void MainWindow::keywordsChanged()
 {
-    if (keywordsDialog()->mode() == KeywordsDialog::Mode::Filter) {
-        QSet<QString> keywords = QtCompat::toSet(keywordsDialog()->model()->values(Qt::Checked));
-        QMap<QString, QModelIndex> indexes;
+    if (keywordsDialog()->mode() == KeywordsDialog::Mode::Filter)
+    {
+        QStringList keywords = keywordsDialog()->model()->values(Qt::Checked); // TODO encapsulate
+        auto logic = keywordsDialog()->button(KeywordsDialog::Button::Or)->isChecked() ? ExifStorage::Logic::Or : ExifStorage::Logic::And;
+        auto files = ExifStorage::byKeywords(keywords, logic);
+        auto checked = QtCompat::toSet(mCheckedModel->stringList());
 
-        // 1. uncheck checked
-        for (const QModelIndex& tid: Checker::children(mTreeModel, Qt::Checked, ui->tree->rootIndex()))
-            indexes[mTreeModel->filePath(tid)] = tid;
+        auto toCheck = files - checked;
+        auto toUncheck = checked - files;
 
-        // 2. check unchecked
-        for (const QString& file: ExifStorage::byKeyword(keyword)) {
-            QModelIndex tid = mTreeModel->index(file);
-            if (tid.isValid()) {
-                indexes[file] = tid;
-            }
-        }
+        for (const auto& path: toCheck)
+            mTreeModel->setData(mTreeModel->index(path), Qt::Checked, Qt::CheckStateRole);
 
-        for (auto i = indexes.cbegin(); i != indexes.cend(); ++i) {
-            const auto& file = i.key();
-            const auto& tid = i.value();
-            Qt::CheckState state = keywords.intersects(QtCompat::toSet(ExifStorage::keywords(file))) ? Qt::Checked : Qt::Unchecked;
-            mTreeModel->setData(tid, state, Qt::CheckStateRole);
-        }
+        for (const auto& path: toUncheck)
+            mTreeModel->setData(mTreeModel->index(path), Qt::Unchecked, Qt::CheckStateRole);
     }
 }
 
@@ -475,7 +473,7 @@ void MainWindow::updateKeywordsDialog(const QStringList& selectedFiles)
     if (auto dialog = keywordsDialog(CreateOption::Never)) {
         if (dialog->mode() == KeywordsDialog::Mode::Edit) {
 
-            QSet<QString> common, partially;
+            QSet<QString> all, common, partially;
 
             for (const QString& path: selectedFiles) {
                 if (QFileInfo(path).isDir()) continue;
@@ -490,11 +488,12 @@ void MainWindow::updateKeywordsDialog(const QStringList& selectedFiles)
                 for (QString& s: keywordsTag.split(';'))
                     keywords.insert(s.trimmed());
 
-                if (common.isEmpty() && partially.isEmpty()) {
-                    common = keywords;
+                if (all.isEmpty()) {
+                    all = common = keywords;
                 } else {
+                    all.unite(keywords);
                     common.intersect(keywords);
-                    partially = (common | partially | keywords) - common;
+                    partially = all - common;
                 }
             }
 

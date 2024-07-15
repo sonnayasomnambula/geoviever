@@ -1,2 +1,1 @@
 * make keywords dialog dockable
-* add AND/OR logic to keywords dialog

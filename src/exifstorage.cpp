@@ -167,11 +167,24 @@ QStringList ExifStorage::keywords(const QString& file)
     return keywords;
 }
 
-QStringList ExifStorage::byKeyword(const QString& keyword)
+QSet<QString> ExifStorage::byKeywords(const QStringList& keywords, Logic logic)
 {
+    if (keywords.isEmpty())
+        return {};
+
     auto storage = instance();
     QMutexLocker lock(&storage->mMutex);
-    return storage->mKeywords.value(keyword).values();
+
+    auto ret = storage->mKeywords.value(keywords[0]);
+    for (int i = 1; i < keywords.size(); ++i)
+    {
+        auto s = storage->mKeywords.value(keywords[i]);
+        if (logic == Logic::And)
+            ret.intersect(s);
+        else
+            ret.unite(s);
+    }
+    return ret;
 }
 
 int ExifStorage::count(const QString& keyword)

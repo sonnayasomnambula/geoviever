@@ -79,7 +79,7 @@ private:
 
     enum class CreateOption { Never, IfNotExists };
     KeywordsDialog* keywordsDialog(CreateOption createOption = CreateOption::IfNotExists);
-    void keywordChecked(const QString& keyword, Qt::CheckState state);
+    void keywordsChanged();
     void updateKeywordsDialog(const QStringList& selectedFiles);
     void saveKeywords();
 

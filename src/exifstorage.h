@@ -55,6 +55,8 @@ signals:
     void keywordAdded(const QString& keyword, int count);
 
 public:
+    enum class Logic { And, Or };
+
     static ExifStorage* instance();
     static void destroy();
 
@@ -62,7 +64,7 @@ public:
 
     static QStringList keywords();
     static QStringList keywords(const QString& file);
-    static QStringList byKeyword(const QString& keyword);
+    static QSet<QString> byKeywords(const QStringList& keywords, Logic logic);
     static int count(const QString& keyword);
 
 private:

@@ -3,6 +3,7 @@
 #include <QHeaderView>
 #include <QTreeView>
 #include <QPushButton>
+#include <QRadioButton>
 #include <QStyledItemDelegate>
 
 #include "keywordsdialog.h"
@@ -189,12 +190,27 @@ void KeywordsDialog::setMode(Mode mode)
 
         mInsert->setVisible(mMode == Mode::Edit);
         mApply->setVisible(mMode == Mode::Edit);
+
+        mOr->setVisible(mMode == Mode::Filter);
+        mAnd->setVisible(mMode == Mode::Filter);
     }
 }
 
-QPushButton* KeywordsDialog::button(Button button)
+QAbstractButton* KeywordsDialog::button(Button button)
 {
-    return button == Button::Add ? mInsert : mApply;
+    switch (button)
+    {
+    case Button::Insert:
+        return mInsert;
+    case Button::Apply:
+        return mApply;
+    case Button::Or:
+        return mOr;
+    case Button::And:
+        return mAnd;
+    }
+
+    return nullptr;
 }
 
 KeywordsDialog::KeywordsDialog(QWidget* parent)
@@ -203,6 +219,8 @@ KeywordsDialog::KeywordsDialog(QWidget* parent)
     , mModel(new KeywordsModel(this))
     , mInsert(new QPushButton(tr("Insert"), this))
     , mApply(new QPushButton(tr("Apply"), this))
+    , mOr(new QRadioButton(tr("OR"), this))
+    , mAnd(new QRadioButton(tr("AND"), this))
 {
     mView->setModel(mModel);
     mView->setIndentation(0);
@@ -212,19 +230,16 @@ KeywordsDialog::KeywordsDialog(QWidget* parent)
     mView->header()->setSectionResizeMode(KeywordsModel::COLUMN_KEYWORD_COUNT, QHeaderView::Stretch);
     mView->setItemDelegateForColumn(KeywordsModel::COLUMN_KEYWORD_COUNT, new CountDelegate(this));
 
+    mInsert->setShortcut(Qt::Key_Insert);
+    mApply->setShortcut(Qt::Key_F2);
+
     setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
 
-    connect(mModel, &KeywordsModel::dataChanged, this, [this](const QModelIndex& topLeft,
-                                                              const QModelIndex& bottomRight,
+    connect(mModel, &KeywordsModel::dataChanged, this, [this](const QModelIndex& /*topLeft*/,
+                                                              const QModelIndex& /*bottomRight*/,
                                                               const QVector<int>& roles){
         if (roles.contains(Qt::CheckStateRole)) {
-            const int col = 0;
-            for (int row = topLeft.row(); row <= bottomRight.row(); ++row) {
-                QModelIndex kid = mModel->index(row, col);
-                QString keyword = mModel->data(kid, Qt::DisplayRole).toString();
-                auto checkState = mModel->data(kid, Qt::CheckStateRole).toInt();
-                emit checkChanged(keyword, static_cast<Qt::CheckState>(checkState));
-            }
+            emit changed();
             mApply->setEnabled(true); // TODO check ExifStorage::keywords() == model->keywords()
         }
 
@@ -239,6 +254,8 @@ KeywordsDialog::KeywordsDialog(QWidget* parent)
         mView->edit(model()->insert("", 0, Qt::ItemIsEditable));
     });
 
+    connect(mAnd, &QRadioButton::toggled, this, &KeywordsDialog::changed);
+
     auto lay = new QVBoxLayout(this);
     auto blay = new QHBoxLayout;
 
@@ -251,17 +268,14 @@ KeywordsDialog::KeywordsDialog(QWidget* parent)
     blay->addWidget(mInsert);
     blay->addStretch();
     blay->addWidget(mApply);
+    blay->addWidget(mOr);
+    blay->addWidget(mAnd);
 
     lay->addWidget(mView);
     lay->addLayout(blay);
 
-    mInsert->hide();
-    mApply->hide();
-
     setWindowTitle(tr("Keywords"));
 
     setMode(Mode::Filter);
-
-    mInsert->setShortcut(Qt::Key_Insert);
-    mApply->setShortcut(Qt::Key_F2);
+    mOr->setChecked(true);
 }

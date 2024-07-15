@@ -8,7 +8,10 @@
 
 
 QT_BEGIN_NAMESPACE
+class QAbstractButton;
 class QTreeView;
+class QPushButton;
+class QRadioButton;
 QT_END_NAMESPACE
 
 
@@ -57,7 +60,7 @@ class KeywordsDialog : public QDialog
     Q_OBJECT
 
 signals:
-    void checkChanged(const QString& keyword, Qt::CheckState state);
+    void changed();
     void apply();
 
 public:
@@ -70,8 +73,8 @@ public:
     QTreeView* view() const { return mView; }
     KeywordsModel* model() const { return mModel; }
 
-    enum class Button { Add, Apply };
-    QPushButton* button(Button button);
+    enum class Button { Insert, Apply, Or, And };
+    QAbstractButton* button(Button button);
 
 private:
     QTreeView* mView = nullptr;
@@ -79,6 +82,8 @@ private:
 
     QPushButton* mInsert = nullptr;
     QPushButton* mApply = nullptr;
+    QRadioButton* mOr = nullptr;
+    QRadioButton* mAnd = nullptr;
 
     Mode mMode = Mode::Edit;
 };
