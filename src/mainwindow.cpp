@@ -288,6 +288,8 @@ MainWindow::MainWindow(QWidget *parent)
     ui->list->selectionModel()->setObjectName("listSelectionModel");
     ui->checked->selectionModel()->setObjectName("checkedSelectionModel");
     mMapSelectionModel->setObjectName("mapSelctionModel");
+
+    setWindowTitle(QCoreApplication::applicationName() + " " + QCoreApplication::applicationVersion());
 }
 
 MainWindow::~MainWindow()
