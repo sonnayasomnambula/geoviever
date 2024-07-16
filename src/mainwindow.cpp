@@ -256,6 +256,10 @@ MainWindow::MainWindow(QWidget *parent)
     */
 
     connect(mTreeModel, &FileTreeModel::itemChecked, this, [this](const QString& path, bool checked){
+        // getting index fixes wrong tree order
+        if (mTreeModel->isDir(mTreeModel->index(path)))
+            return;
+
         if (checked) {
             ExifStorage::parse(path);
             mMapModel->insert(path);

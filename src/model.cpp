@@ -224,11 +224,14 @@ const QStringList FileTreeModel::entryList(const QString &dir, const QStringList
 
     QStringList all;
 
-    for (const auto& file: files)
-        all.append(directory.absoluteFilePath(file));
-
     for (const auto& subdir: subdirs)
+    {
+        all.append(subdir);
         all.append(entryList(directory.absoluteFilePath(subdir), nameFilters));
+    }
+
+    for (const auto& file: files)
+        all.append(directory.absoluteFilePath(file));    
 
     return all;
 }
