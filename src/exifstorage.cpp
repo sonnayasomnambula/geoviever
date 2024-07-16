@@ -10,14 +10,76 @@
 
 int ExifReader::thumbnailSize = 32;
 
+bool ThreadSafeStringSet::insert(const QString& s)
+{
+    QMutexLocker lock(&mMutex);
+    int sz = Super::size();
+    Super::insert(s);
+    return Super::size() > sz;
+}
+
+void ThreadSafeStringSet::remove(const QString& s)
+{
+    QMutexLocker lock(&mMutex);
+    Super::remove(s);
+}
+
+void ThreadSafeStringSet::clear()
+{
+    QMutexLocker lock(&mMutex);
+    Super::clear();
+}
+
+QString ThreadSafeStringSet::takeFirst()
+{
+    QMutexLocker lock(&mMutex);
+    if (isEmpty()) return "";
+    auto first = cbegin();
+    QString s = *first;
+    erase(first);
+    return s;
+}
+
+int ThreadSafeStringSet::size() const
+{
+    QMutexLocker lock(&mMutex);
+    return Super::size();
+}
+
+WaitCondition::Locker::Locker(WaitCondition* condition) : mCondition(condition)
+{
+    mCondition->mMutex.lock();
+    mCondition->wait(&mCondition->mMutex);
+}
+
+WaitCondition::Locker::~Locker()
+{
+    mCondition->mMutex.unlock();
+}
+
 void ExifReader::parse(const QString& path)
 {
-    if (!sender()) return; // disconnected
+    if (path.isEmpty()) return;
 
     if (auto photo = load(path))
         emit ready(photo);
     else
         emit failed(path);
+}
+
+void ExifReader::run()
+{
+    while (!mTerminated)
+    {
+        WaitCondition::Locker lock(mCondition);
+
+        while (!mTerminated)
+        {
+            QString path = mPending->takeFirst();
+            if (path.isEmpty()) break;
+            parse(path);
+        }
+    }
 }
 
 QSharedPointer<Photo> ExifReader::load(const QString& path)
@@ -51,16 +113,13 @@ QSharedPointer<Photo> ExifReader::load(const QString& path)
     return data;
 }
 
-ExifStorage::ExifStorage()
+ExifStorage::ExifStorage() : mThread(&mPending, &mCondition)
 {
     qRegisterMetaType< QSharedPointer<Photo> >();
 
-    auto reader = new ExifReader;
-    reader->moveToThread(&mThread);
-    connect(&mThread, &QThread::finished, reader, &QObject::deleteLater);
-    connect(this, &ExifStorage::parse, reader, &ExifReader::parse);
-    connect(reader, &ExifReader::ready, this, &ExifStorage::add);
-    connect(reader, &ExifReader::failed, this, &ExifStorage::fail);
+    connect(&mThread, &ExifReader::ready, this, &ExifStorage::add);
+    connect(&mThread, &ExifReader::failed, this, &ExifStorage::fail);
+
     mThread.start();
 }
 
@@ -90,8 +149,7 @@ void ExifStorage::add(const QSharedPointer<Photo>& photo)
             }
         }
 
-        mInProgress.remove(photo->path);
-        rest = mInProgress.size();
+        rest = mPending.size();
     }
 
     emit ready(photo);
@@ -100,14 +158,13 @@ void ExifStorage::add(const QSharedPointer<Photo>& photo)
         emit keywordAdded(i.key(), i.value());
 }
 
-void ExifStorage::fail(const QString& path)
+void ExifStorage::fail(const QString& /*path*/)
 {
     int rest = 0;
 
     {
         QMutexLocker lock(&mMutex);
-        mInProgress.remove(path);
-        rest = mInProgress.size();
+        rest = mPending.size();
     }
 
     emit remains(rest);
@@ -122,10 +179,25 @@ ExifStorage* ExifStorage::instance()
 void ExifStorage::destroy()
 {
     auto storage = instance();
-    storage->disconnect();
+
+    storage->mThread.stop();
+    storage->mCondition.wakeOne();
 
     storage->mThread.quit();
     storage->mThread.wait();
+}
+
+void ExifStorage::parse(const QString& path)
+{
+    auto storage = instance();
+    if (storage->mPending.insert(path))
+        storage->mCondition.wakeOne();
+}
+
+void ExifStorage::cancel(const QString& path)
+{
+    auto storage = instance();
+    storage->mPending.remove(path);
 }
 
 QSharedPointer<Photo> ExifStorage::data(const QString& path)
@@ -136,11 +208,8 @@ QSharedPointer<Photo> ExifStorage::data(const QString& path)
     if (i != storage->mData.constEnd())
         return *i;
 
-    if (!storage->mInProgress.contains(path))
-    {
-        storage->mInProgress.insert(path);
-        emit storage->parse(path);
-    }
+    if (storage->mPending.insert(path))
+        storage->mCondition.wakeOne();
 
     return {};
 }

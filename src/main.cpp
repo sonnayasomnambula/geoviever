@@ -10,7 +10,7 @@ int main(int argc, char *argv[])
     a.setOrganizationName("sonnayasomnambula");
     a.setOrganizationDomain("sonnayasomnambula.github.io");
     a.setApplicationName("Geoviever");
-    a.setApplicationVersion("0.3");
+    a.setApplicationVersion("0.4");
 
     MainWindow w;
     w.show();

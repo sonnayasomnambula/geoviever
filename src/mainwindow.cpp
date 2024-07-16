@@ -257,9 +257,11 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(mTreeModel, &FileTreeModel::itemChecked, this, [this](const QString& path, bool checked){
         if (checked) {
+            ExifStorage::parse(path);
             mMapModel->insert(path);
             mCheckedModel->insert(path);
         } else {
+            ExifStorage::cancel(path);
             mMapModel->remove(path);
             mCheckedModel->remove(path);
         }
@@ -541,7 +543,7 @@ void MainWindow::saveKeywords()
             return;
         }
 
-        ExifStorage::instance()->parse(path);
+        ExifStorage::parse(path);
     }
 
     QGuiApplication::restoreOverrideCursor();

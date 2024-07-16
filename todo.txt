@@ -1,2 +1,1 @@
-* interrupt exif reading when no longer needed
 * make keywords dialog dockable
