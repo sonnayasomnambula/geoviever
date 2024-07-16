@@ -213,6 +213,8 @@ MainWindow::MainWindow(QWidget *parent)
     ui->tree->addActions(actions);
     ui->list->addActions(actions);
 
+    ui->checked->addActions({ ui->actionUncheck, ui->actionSeparator1, ui->actionEditKeywords });
+
     auto comboDelegate = new ItemButtonDelegate(QImage(":/cross-small.png"), ui->root);
     ui->root->setItemDelegate(comboDelegate);
     connect(comboDelegate, &ItemButtonDelegate::buttonPressed, ui->root, &QComboBox::removeItem);
