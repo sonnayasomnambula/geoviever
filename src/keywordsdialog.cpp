@@ -188,11 +188,20 @@ void KeywordsDialog::setMode(Mode mode)
 
         mView->setColumnHidden(KeywordsModel::COLUMN_KEYWORD_COUNT, mMode == Mode::Edit);
 
-        mInsert->setVisible(mMode == Mode::Edit);
-        mApply->setVisible(mMode == Mode::Edit);
+        if (mMode != Mode::Edit) // hide first
+        {
+            mInsert->hide();
+            mApply->hide();
+        }
 
         mOr->setVisible(mMode == Mode::Filter);
         mAnd->setVisible(mMode == Mode::Filter);
+
+        if (mMode == Mode::Edit)
+        {
+            mInsert->show();
+            mApply->show();
+        }
     }
 }
 
