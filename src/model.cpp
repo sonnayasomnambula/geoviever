@@ -691,6 +691,22 @@ bool CoordEditModel::setData(const QModelIndex& index, const QVariant& value, in
     return false;
 }
 
+QVariant CoordEditModel::headerData(int section, Qt::Orientation orientation, int role) const
+{
+    if (orientation == Qt::Horizontal && role == Qt::DisplayRole)
+    {
+        switch (section)
+        {
+        case COLUMN_NAME:
+            return tr("Name");
+        case COLUMN_POSITION:
+            return tr("Coords");
+        }
+    }
+
+    return {};
+}
+
 void CoordEditModel::backup(const QString& path, const QPointF& position)
 {
     if (!mBackup.contains(path))

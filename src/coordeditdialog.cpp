@@ -17,7 +17,6 @@ CoordEditDialog::CoordEditDialog(QWidget* parent)
 {
     mView->setModel(mModel);
     mView->setIndentation(0);
-    mView->setHeaderHidden(true);
 
     mApply->setShortcut(Qt::Key_F2);
 

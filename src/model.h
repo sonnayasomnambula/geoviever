@@ -234,6 +234,8 @@ public:
     QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
     bool setData(const QModelIndex& index, const QVariant& value, int role = Qt::EditRole) override;
 
+    QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
+
     void backup(const QString& path, const QPointF& position);
     void update(const QString& path, const QPointF& position);
     void clear();

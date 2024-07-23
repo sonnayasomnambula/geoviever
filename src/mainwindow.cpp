@@ -61,6 +61,7 @@ struct Settings : AbstractSettings
 
     struct {
         Geometry geometry = "coordEditDialog/geometry";
+        struct { State state = "coordEditDialog/header.state"; } header;
     } coordEditDialog;
 };
 
@@ -379,6 +380,7 @@ void MainWindow::saveSettings()
     if (auto dialog = coordEditDialog(CreateOption::Never))
     {
         settings.coordEditDialog.geometry.save(dialog);
+        settings.coordEditDialog.header.state.save(dialog->view()->header());
     }
 
     if (auto dialog = keywordsDialog(CreateOption::Never))
@@ -518,6 +520,7 @@ CoordEditDialog* MainWindow::coordEditDialog(CreateOption createOption)
     connect(dialog, &CoordEditDialog::revert, this, &MainWindow::revertCoords);
 
     settings.coordEditDialog.geometry.restore(dialog);
+    settings.coordEditDialog.header.state.restore(dialog->view()->header());
 
     return dialog;
 }
