@@ -28,7 +28,6 @@ public:
     }
 };
 
-
 int KeywordsModel::rowCount(const QModelIndex& parent) const
 {
     return parent.isValid() ? 0 : mData.size();
@@ -205,7 +204,7 @@ void KeywordsDialog::setMode(Mode mode)
     }
 }
 
-QAbstractButton* KeywordsDialog::button(Button button)
+QAbstractButton* KeywordsDialog::button(Button button) const
 {
     switch (button)
     {

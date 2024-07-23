@@ -7,6 +7,7 @@ import QtQuick.Shapes 1.1
 Rectangle {
     Map {
         id: map
+        objectName: "map"
         anchors.fill: parent
         plugin: Plugin { name: "osm"; }
         center:  QtPositioning.coordinate(59.95, 30.32)

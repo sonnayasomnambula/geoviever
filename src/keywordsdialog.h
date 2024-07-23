@@ -1,7 +1,7 @@
 #ifndef KEYWORDSDIALOG_H
 #define KEYWORDSDIALOG_H
 
-#include <QAbstractListModel>
+#include <QAbstractItemModel>
 #include <QDialog>
 
 #include <tuple>
@@ -18,13 +18,12 @@ QT_END_NAMESPACE
 class KeywordsModel : public QAbstractItemModel
 {
     using Super = QAbstractItemModel;
-
     Q_OBJECT
 
 public:
-    using Super::Super;
-
     enum { COLUMN_KEYWORD, COLUMN_KEYWORD_COUNT, COLUMN_COUNT };
+
+    using Super::Super;
 
     int rowCount(const QModelIndex& parent = {}) const override;
     int columnCount(const QModelIndex& parent = {}) const override;
@@ -74,7 +73,7 @@ public:
     KeywordsModel* model() const { return mModel; }
 
     enum class Button { Insert, Apply, Or, And };
-    QAbstractButton* button(Button button);
+    QAbstractButton* button(Button button) const;
 
 private:
     QTreeView* mView = nullptr;

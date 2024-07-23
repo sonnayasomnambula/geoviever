@@ -11,6 +11,7 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQmlError>
+#include <QQuickItem>
 #include <QSortFilterProxyModel>
 #include <QStandardPaths>
 #include <QStringListModel>
@@ -22,8 +23,10 @@
 #include <cmath>
 
 #include "exif/file.h"
+#include "exif/utils.h"
 
 #include "abstractsettings.h"
+#include "coordeditdialog.h"
 #include "exifstorage.h"
 #include "keywordsdialog.h"
 #include "model.h"
@@ -55,6 +58,10 @@ struct Settings : AbstractSettings
         Tag<bool> overwriteSilently = "keywordDialog/overwriteSilently";
         Tag<bool> orLogic = "keywordDialog/orLogic";
     } keywordDialog;
+
+    struct {
+        Geometry geometry = "coordEditDialog/geometry";
+    } coordEditDialog;
 };
 
 class GeoCoordinateDelegate : public QStyledItemDelegate
@@ -198,6 +205,8 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
+    mMapCursor.setWidget(ui->map);
+
     ui->actionSeparator1->setSeparator(true);
     ui->actionSeparator2->setSeparator(true);
 
@@ -207,13 +216,13 @@ MainWindow::MainWindow(QWidget *parent)
 
     QList<QAction*> actions = { ui->actionCheck, ui->actionUncheck,
                                 ui->actionSeparator1,
-                                ui->actionEditKeywords,
+                                ui->actionEditKeywords, ui->actionEditCoords,
                                 ui->actionSeparator2,
                                 ui->actionIconView, ui->actionTreeView };
     ui->tree->addActions(actions);
     ui->list->addActions(actions);
 
-    ui->checked->addActions({ ui->actionUncheck, ui->actionSeparator1, ui->actionEditKeywords });
+    ui->checked->addActions({ ui->actionUncheck, ui->actionSeparator1, ui->actionEditKeywords, ui->actionEditCoords });
 
     auto comboDelegate = new ItemButtonDelegate(QImage(":/cross-small.png"), ui->root);
     ui->root->setItemDelegate(comboDelegate);
@@ -298,6 +307,12 @@ MainWindow::MainWindow(QWidget *parent)
     mMapSelectionModel->setObjectName("mapSelctionModel");
 
     setWindowTitle(QCoreApplication::applicationName() + " " + QCoreApplication::applicationVersion());
+
+    if (QObject* map = ui->map->rootObject()->findChild<QObject*>("map"))
+    {
+        QSignalBlocker lock(mMapModel);
+        mMapModel->setZoom(map->property("zoomLevel").toDouble());
+    }
 }
 
 MainWindow::~MainWindow()
@@ -319,6 +334,12 @@ bool MainWindow::eventFilter(QObject* o, QEvent* e)
         showTooltip(static_cast<QHelpEvent*>(e)->globalPos(), ui->tree);
     if (o == ui->list && e->type() == QEvent::ToolTip)
         showTooltip(static_cast<QHelpEvent*>(e)->globalPos(), ui->list);
+    if (o == ui->map && e->type() == QEvent::MouseButtonPress)
+        mapClick(static_cast<QMouseEvent*>(e));
+    if (o == ui->map && e->type() == QEvent::MouseButtonRelease)
+        mapClick(static_cast<QMouseEvent*>(e));
+    if (o == ui->map && e->type() == QEvent::MouseMove)
+        return mapMouseMove(static_cast<QMouseEvent*>(e));
     return QObject::eventFilter(o, e);
 }
 
@@ -354,6 +375,11 @@ void MainWindow::saveSettings()
     settings.dirs.history = history();
     settings.dirs.root = ui->root->currentText();
     settings.filter = ui->filter->text();
+
+    if (auto dialog = coordEditDialog(CreateOption::Never))
+    {
+        settings.coordEditDialog.geometry.save(dialog);
+    }
 
     if (auto dialog = keywordsDialog(CreateOption::Never))
     {
@@ -409,6 +435,56 @@ void MainWindow::showTooltip(const QPoint& pos, QAbstractItemView* view)
     widget->showAt(pos, 2);
 }
 
+void MainWindow::mapClick(const QMouseEvent* e)
+{
+    if (!ui->actionEditCoords->isChecked())
+        return;
+
+    if (mMapSelectionModel->howeredRow() != -1)
+        mMapCursor.setCursor(e->type() == QEvent::MouseButtonPress ? Qt::ClosedHandCursor : Qt::OpenHandCursor);
+
+    if (e->type() == QEvent::MouseButtonRelease && e->button() == Qt::LeftButton)
+    {
+        if (auto map = ui->map->rootObject()->findChild<QObject*>("map"))
+        {
+            QGeoCoordinate coord;
+            QMetaObject::invokeMethod(map, "toCoordinate", Q_RETURN_ARG(QGeoCoordinate, coord), Q_ARG(QPointF, QPointF(e->pos())));
+            qDebug() << "QML function returned:" << coord << "HR" << mMapSelectionModel->howeredRow();
+
+            QString path = IFileListModel::path(mMapModel->index(mMapSelectionModel->howeredRow()));
+            if (path.isEmpty())
+                path = IFileListModel::path(currentView()->currentIndex());
+            if (path.isEmpty())
+                return;
+
+            if (auto photo = ExifStorage::data(path))
+            {
+                coordEditDialog()->model()->backup(photo->path, photo->position);
+                photo->position = QPointF(coord.latitude(), coord.longitude());
+                coordEditDialog()->model()->update(photo->path, photo->position);
+                emit ExifStorage::instance()->ready(photo);
+            }
+        }
+    }
+}
+
+bool MainWindow::mapMouseMove(const QMouseEvent* e)
+{
+    const bool isEditMode = ui->actionEditCoords->isChecked();
+    const bool isOnPicture = mMapSelectionModel->howeredRow() != -1;
+    const bool isPressed = (e->buttons() & Qt::LeftButton);
+
+    if (!isEditMode)
+        mMapCursor.setCursor(Qt::ArrowCursor);
+    else if (!isOnPicture)
+        mMapCursor.setCursor(Qt::CrossCursor);
+    else {
+        mMapCursor.setCursor(isPressed ? Qt::ClosedHandCursor : Qt::OpenHandCursor);
+    }
+
+    return isEditMode && isPressed;
+}
+
 QStringList MainWindow::history() const
 {
     QStringList hist;
@@ -426,6 +502,102 @@ void MainWindow::setHistory(const QStringList& history)
     ui->root->clear();
     ui->root->addItems(history);
     ui->root->setCurrentText(text);
+}
+
+CoordEditDialog* MainWindow::coordEditDialog(CreateOption createOption)
+{
+    static CoordEditDialog* dialog = nullptr;
+    if (dialog || createOption == CreateOption::Never)
+        return dialog;
+
+    Settings settings;
+
+    dialog = new CoordEditDialog(this);
+    dialog->view()->setItemDelegateForColumn(CoordEditModel::COLUMN_POSITION, new GeoCoordinateDelegate(dialog)); // TODO incapsulate
+    connect(dialog, &CoordEditDialog::apply, this, &MainWindow::saveCoords);
+    connect(dialog, &CoordEditDialog::revert, this, &MainWindow::revertCoords);
+
+    settings.coordEditDialog.geometry.restore(dialog);
+
+    return dialog;
+}
+
+void MainWindow::saveCoords()
+{
+    Settings settings;
+
+    if (!settings.keywordDialog.overwriteSilently)
+    {
+        using QMBox = QMessageBox;
+        QMBox box(QMBox::Question, "", tr("Overwrite %1 file(s)?").arg(coordEditDialog()->model()->rowCount()), QMBox::Yes | QMBox::No, this);
+        box.setCheckBox(new QCheckBox(tr("Do not ask me next time")));
+        int ansver = box.exec();
+        settings.keywordDialog.overwriteSilently = box.checkBox()->isChecked();
+        if (ansver != QMBox::Yes)
+            return;
+    }
+
+    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+    QStringList warnings;
+
+    for (const QString& path: coordEditDialog()->model()->updated())
+    {
+        Exif::File file;
+        if (!file.load(path))
+        {
+            warnings.append(tr("Load '%1' failed: %2").arg(path, file.errorString()));
+            continue;
+        }
+
+        if (auto photo = ExifStorage::data(path))
+        {
+            double lat = photo->position.x();
+            double lon = photo->position.y();
+
+            file.setValue(EXIF_IFD_GPS, Exif::Tag::GPS::LATITUDE, Exif::Utils::toDMS(std::abs(lat)));
+            file.setValue(EXIF_IFD_GPS, Exif::Tag::GPS::LONGITUDE, Exif::Utils::toDMS(std::abs(lon)));
+            file.setValue(EXIF_IFD_GPS, Exif::Tag::GPS::LATITUDE_REF, Exif::Utils::toLatitudeRef(lat));
+            file.setValue(EXIF_IFD_GPS, Exif::Tag::GPS::LONGITUDE_REF, Exif::Utils::toLongitudeRef(lon));
+        }
+        else
+        {
+            warnings.append(tr("Unable to save '%1': internal application error").arg(path));
+        }
+
+        if (!file.save(path))
+        {
+            warnings.append(tr("Save '%1' failed: %2").arg(path, file.errorString()));
+            continue;
+        }
+    }
+
+    coordEditDialog()->model()->clear();
+    QGuiApplication::restoreOverrideCursor();
+
+    if (!warnings.isEmpty())
+        QMessageBox::warning(this, "", warnings.join("\n"));
+}
+
+void MainWindow::revertCoords()
+{
+    auto backup = coordEditDialog()->model()->backedUp();
+    for (auto i = backup.cbegin(); i != backup.cend(); ++i)
+    {
+        const QString& path = i.key();
+        const QPointF& pos = i.value();
+
+        if (auto photo = ExifStorage::data(path))
+        {
+            photo->position = pos;
+            emit ExifStorage::instance()->ready(photo);
+        }
+        else
+        {
+            qWarning() << "revert" << path << "failed";
+        }
+    }
+
+    coordEditDialog()->model()->clear();
 }
 
 KeywordsDialog* MainWindow::keywordsDialog(CreateOption createOption)
@@ -524,7 +696,7 @@ void MainWindow::saveKeywords()
 
     if (!settings.keywordDialog.overwriteSilently) {
         using QMBox = QMessageBox;
-        QMBox box(QMBox::Question, "", tr("Overwrite %1 file(s)?").arg(selectedFiles.size()), QMBox::Yes | QMBox::No, this);
+        QMBox box(QMBox::Question, "", tr("Overwrite %n file(s)?", nullptr, selectedFiles.size()), QMBox::Yes | QMBox::No, this);
         box.setCheckBox(new QCheckBox(tr("Do not ask me next time")));
         int ansver = box.exec();
         settings.keywordDialog.overwriteSilently = box.checkBox()->isChecked();
@@ -533,20 +705,21 @@ void MainWindow::saveKeywords()
     }
 
     QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+    QStringList warnings;
 
     for (const auto& path: selectedFiles) {
         if (QFileInfo(path).isDir()) continue;
         Exif::File file;
         if (!file.load(path)) {
-            QMessageBox::warning(this, "", tr("Load '%1' failed: %2").arg(path, file.errorString()));
-            return;
+            warnings.append(tr("Load '%1' failed: %2").arg(path, file.errorString()));
+            continue;
         }
 
         file.setValue(EXIF_IFD_0, EXIF_TAG_XP_KEYWORDS, keywordsDialog()->model()->values(Qt::Checked).join(';'));
 
         if (!file.save(path)) {
-            QMessageBox::warning(this, "", tr("Save '%1' failed: %2").arg(path, file.errorString()));
-            return;
+            warnings.append(tr("Save '%1' failed: %2").arg(path, file.errorString()));
+            continue;
         }
 
         ExifStorage::parse(path);
@@ -554,8 +727,12 @@ void MainWindow::saveKeywords()
 
     QGuiApplication::restoreOverrideCursor();
 
-    keywordsDialog()->button(KeywordsDialog::Button::Apply)->setEnabled(false);
-    keywordsDialog()->model()->setExtraFlags(Qt::NoItemFlags); // reset
+    if (warnings.isEmpty()) {
+        keywordsDialog()->button(KeywordsDialog::Button::Apply)->setEnabled(false);
+        keywordsDialog()->model()->setExtraFlags(Qt::NoItemFlags); // reset
+    } else {
+        QMessageBox::warning(this, "", warnings.join("\n"));
+    }
 }
 
 void MainWindow::updatePicture(const QString& path)
@@ -816,7 +993,18 @@ void MainWindow::on_actionEditKeywords_triggered(bool checked)
     else
         updateKeywordsDialog(mTreeModel->path(currentSelection()));
 
-    keywordsDialog()->show();
+    if (checked)
+        keywordsDialog()->show();
+}
+
+void MainWindow::on_actionEditCoords_triggered(bool checked)
+{
+    mMapCursor.setCursor(checked ? Qt::CrossCursor : Qt::ArrowCursor);
+    if (checked)
+    {        
+        mTreeModel->setData(currentView()->currentIndex(), Qt::Checked, Qt::CheckStateRole);
+        coordEditDialog()->show();
+    }
 }
 
 void MainWindow::on_actionIconView_toggled(bool toggled)

@@ -30,7 +30,7 @@ public:
 };
 
 
-class Checker
+class Checker // TODO remove class
 {
 public:
     static QModelIndexList children(const QAbstractItemModel* model, Qt::CheckState state, const QModelIndex& parent = {});
@@ -81,7 +81,7 @@ public:
     static const QStringList entryList(const QString& dir, const QStringList& nameFilters);
 
 private:
-    bool setCheckState(const QModelIndex& index, const QVariant& value);
+    bool emitItemChecked(const QModelIndex& index, const QVariant& value);
     QStringList entryList(const QString& dir) const;
 };
 
@@ -213,6 +213,38 @@ public:
 
 private:
     int mHoveredRow = -1;
+};
+
+class CoordEditModel : public QAbstractItemModel, public IFileListModel
+{
+    using Super = QAbstractItemModel;
+    Q_OBJECT
+
+public:
+    enum { COLUMN_NAME, COLUMN_POSITION, COLUMNS_COUNT };
+
+    using Super::Super;
+
+    int rowCount(const QModelIndex& parent = {}) const override;
+    int columnCount(const QModelIndex& parent = {}) const override;
+    QModelIndex index(int row, int column, const QModelIndex& parent = {}) const override;
+    QModelIndex index(const QString& path) const override;
+    QModelIndex parent(const QModelIndex& index) const override;
+    // Qt::ItemFlags flags(const QModelIndex& index) const override;
+    QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
+    bool setData(const QModelIndex& index, const QVariant& value, int role = Qt::EditRole) override;
+
+    void backup(const QString& path, const QPointF& position);
+    void update(const QString& path, const QPointF& position);
+    void clear();
+
+    QStringList updated() const;
+    const QMap<QString, QPointF>& backedUp() const { return mBackup; }
+
+private:
+    QMap<QString, QPointF> mBackup;
+    struct Data { QString path, name; QPointF position; };
+    QVector<Data> mData;
 };
 
 #endif // MODEL_H

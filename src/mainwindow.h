@@ -16,6 +16,7 @@ class QItemSelectionModel;
 class QStringListModel;
 QT_END_NAMESPACE
 
+class CoordEditDialog;
 class FileTreeModel;
 class KeywordsDialog;
 class PhotoListModel;
@@ -73,11 +74,33 @@ private:
 
     void showMapTooltip(const QPoint& pos);
     void showTooltip(const QPoint& pos, QAbstractItemView* view);
+    void mapClick(const QMouseEvent* e);
+    bool mapMouseMove(const QMouseEvent* e);
+
+    class CursorIcon
+    {
+        QWidget* mWidget = nullptr;
+        Qt::CursorShape mCursorShape = Qt::ArrowCursor;
+
+    public:
+        void setWidget(QWidget* w) { mWidget = w; }
+        void setCursor(Qt::CursorShape cursorShape) {
+            if (cursorShape == mCursorShape)
+                return;
+            mCursorShape = cursorShape;
+            if (mWidget)
+                mWidget->setCursor(mCursorShape);
+        }
+
+    } mMapCursor;
 
     QStringList history() const;
     void setHistory(const QStringList& history);
 
     enum class CreateOption { Never, IfNotExists };
+    CoordEditDialog* coordEditDialog(CreateOption createOption = CreateOption::IfNotExists);
+    void saveCoords();
+    void revertCoords();
     KeywordsDialog* keywordsDialog(CreateOption createOption = CreateOption::IfNotExists);
     void keywordsChanged();
     void updateKeywordsDialog(const QStringList& selectedFiles);
@@ -106,6 +129,7 @@ private slots:
     void on_actionCheck_triggered();
     void on_actionUncheck_triggered();
     void on_actionEditKeywords_triggered(bool checked);
+    void on_actionEditCoords_triggered(bool checked);
     void on_actionIconView_toggled(bool toggled);
 
 private:

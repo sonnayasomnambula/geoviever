@@ -6,6 +6,7 @@ include(src/3rdparty/libexif/libexif.pri)
 include(src/3rdparty/libjpeg/libjpeg.pri)
 
 SOURCES += \
+    src/coordeditdialog.cpp \
     src/exif/file.cpp \
     src/exif/utils.cpp \
     src/exifstorage.cpp \
@@ -18,6 +19,7 @@ SOURCES += \
     src/tooltip.cpp
 
 HEADERS += \
+    src/coordeditdialog.h \
     src/exif/file.h \
     src/exif/utils.h \
     src/exifstorage.h \

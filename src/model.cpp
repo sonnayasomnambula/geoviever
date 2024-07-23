@@ -63,10 +63,10 @@ QVariant Checker::checkState(const QModelIndex& index) const
 
 bool Checker::setCheckState(const QModelIndex& index, const QVariant& value)
 {
-    if (!index.isValid())
+    if (!index.isValid() || mData[index.internalId()] == value.toInt())
         return false;
 
-    mData.insert(index.internalId(), value.toInt());
+    mData[index.internalId()] = value.toInt();
     emit const_cast<QAbstractItemModel*>(index.model())->dataChanged(index, index, { Qt::CheckStateRole });
     updateChildrenCheckState(index);
     return true;
@@ -171,7 +171,7 @@ QVariant FileTreeModel::data(const QModelIndex& index, int role) const
 bool FileTreeModel::setData(const QModelIndex& index, const QVariant& value, int role)
 {
     return role == Qt::CheckStateRole ?
-               Checker::setCheckState(index, value) && FileTreeModel::setCheckState(index, value) :
+               setCheckState(index, value) && emitItemChecked(index, value) :
                Super::setData(index, value, role);
 }
 
@@ -196,11 +196,8 @@ QModelIndex FileTreeModel::index(const QString& path) const
     return Super::index(path);
 }
 
-bool FileTreeModel::setCheckState(const QModelIndex& index, const QVariant& value)
+bool FileTreeModel::emitItemChecked(const QModelIndex& index, const QVariant& value)
 {
-    if (!index.isValid())
-        return false;
-
     Qt::CheckState state = static_cast<Qt::CheckState>(value.toInt());
     for (const QString& entry: entryList(filePath(index)))
         /*emit*/ itemChecked(entry, state == Qt::Checked);
@@ -346,7 +343,10 @@ void MapPhotoListModel::remove(const QString& path)
 void MapPhotoListModel::update(const QSharedPointer<Photo>& photo)
 {
     if (mKeys.contains(photo->path))
+    {
+        mBuckets.remove(photo->path);
         mBuckets.insert(photo, mZoom);
+    }
 }
 
 void MapPhotoListModel::setZoom(qreal zoom)
@@ -406,7 +406,7 @@ MapPhotoListModel::Bucket::Bucket(const QSharedPointer<Photo> &photo)
     insert(photo);
 }
 
-bool MapPhotoListModel::Bucket::insert(const QSharedPointer<Photo> &photo)
+bool MapPhotoListModel::Bucket::insert(const QSharedPointer<Photo>& photo)
 {
     if (!isValid(photo))
         return false;
@@ -616,4 +616,115 @@ int MapSelectionModel::howeredRow() const
     return mHoveredRow;
 }
 
+int CoordEditModel::rowCount(const QModelIndex& parent) const
+{
+    return parent.isValid() ? 0 : mData.size();
+}
 
+int CoordEditModel::columnCount(const QModelIndex &parent) const
+{
+    return parent.isValid() ? 0 : COLUMNS_COUNT;
+}
+
+QModelIndex CoordEditModel::index(int row, int column, const QModelIndex& parent) const
+{
+    return parent.isValid() ? QModelIndex() : createIndex(row, column);
+}
+
+QModelIndex CoordEditModel::index(const QString& path) const
+{
+    for (int row = 0; row < mData.size(); ++row)
+        if (mData[row].path == path)
+            return index(row, 0);
+
+    return {};
+}
+
+QModelIndex CoordEditModel::parent(const QModelIndex& /*index*/) const
+{
+    return {};
+}
+
+QVariant CoordEditModel::data(const QModelIndex& index, int role) const
+{
+    if (index.isValid() &&
+        index.row() < rowCount(index.parent()) &&
+        index.column() < columnCount(index.parent()))
+    {
+        const Data& d = mData.at(index.row());
+        if (role == Qt::DisplayRole || role == Qt::EditRole)
+        {
+            if (index.column() == COLUMN_NAME)
+                return d.name;
+            if (index.column() == COLUMN_POSITION)
+                return d.position;
+        }
+
+        if (role == IFileListModel::FilePathRole)
+        {
+            return d.path;
+        }
+    }
+
+    return {};
+
+}
+
+bool CoordEditModel::setData(const QModelIndex& index, const QVariant& value, int role)
+{
+    if (index.isValid() && index.row() < rowCount(index.parent()))
+    {
+        Data& d = mData[index.row()];
+
+        if (role == Qt::EditRole)
+        {
+            switch (index.column())
+            {
+            case COLUMN_POSITION:
+                d.position = value.toPointF();
+                emit dataChanged(index, index, { role });
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+void CoordEditModel::backup(const QString& path, const QPointF& position)
+{
+    if (!mBackup.contains(path))
+        mBackup[path] = position;
+}
+
+void CoordEditModel::update(const QString& path, const QPointF& position)
+{
+    QModelIndex i = index(path);
+    if (i.isValid())
+    {
+        setData(i.siblingAtColumn(COLUMN_POSITION), position);
+        return;
+    }
+
+    int row = rowCount();
+    beginInsertRows({}, row, row);
+    mData.append({ path, QFileInfo(path).fileName(), position });
+    endInsertRows();
+}
+
+void CoordEditModel::clear()
+{
+    beginResetModel();
+    mData.clear();
+    mBackup.clear();
+    endResetModel();
+}
+
+QStringList CoordEditModel::updated() const
+{
+    QStringList l;
+    l.reserve(mData.size());
+    for (const Data& d: mData)
+        l.append(d.path);
+    return l;
+}
