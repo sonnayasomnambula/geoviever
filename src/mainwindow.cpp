@@ -215,7 +215,7 @@ MainWindow::MainWindow(QWidget *parent)
     viewGroup->addAction(ui->actionIconView);
     viewGroup->addAction(ui->actionTreeView);
 
-    QList<QAction*> actions = { ui->actionCheck, ui->actionUncheck,
+    QList<QAction*> actions = { ui->actionCheck, ui->actionUncheck, ui->actionUncheckAll,
                                 ui->actionSeparator1,
                                 ui->actionEditKeywords, ui->actionEditCoords,
                                 ui->actionSeparator2,
@@ -223,7 +223,7 @@ MainWindow::MainWindow(QWidget *parent)
     ui->tree->addActions(actions);
     ui->list->addActions(actions);
 
-    ui->checked->addActions({ ui->actionUncheck, ui->actionSeparator1, ui->actionEditKeywords, ui->actionEditCoords });
+    ui->checked->addActions({ ui->actionUncheck, ui->actionUncheckAll, ui->actionSeparator1, ui->actionEditKeywords, ui->actionEditCoords });
 
     auto comboDelegate = new ItemButtonDelegate(QImage(":/cross-small.png"), ui->root);
     ui->root->setItemDelegate(comboDelegate);
@@ -984,6 +984,12 @@ void MainWindow::on_actionCheck_triggered()
 void MainWindow::on_actionUncheck_triggered()
 {
     for (const auto& tid: currentSelection())
+        mTreeModel->setData(tid, Qt::Unchecked, Qt::CheckStateRole);
+}
+
+void MainWindow::on_actionUncheckAll_triggered()
+{
+    for (const auto& tid: Checker::children(mTreeModel, Qt::Checked))
         mTreeModel->setData(tid, Qt::Unchecked, Qt::CheckStateRole);
 }
 

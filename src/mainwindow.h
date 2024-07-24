@@ -128,6 +128,7 @@ private slots:
 
     void on_actionCheck_triggered();
     void on_actionUncheck_triggered();
+    void on_actionUncheckAll_triggered();
     void on_actionEditKeywords_triggered(bool checked);
     void on_actionEditCoords_triggered(bool checked);
     void on_actionIconView_toggled(bool toggled);

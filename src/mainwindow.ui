@@ -35,7 +35,7 @@
             <property name="editable">
              <bool>true</bool>
             </property>
-            <property name="placeholderText" stdset="0">
+            <property name="placeholderText">
              <string>&lt;root&gt;</string>
             </property>
            </widget>
@@ -207,7 +207,7 @@
      <x>0</x>
      <y>0</y>
      <width>800</width>
-     <height>21</height>
+     <height>22</height>
     </rect>
    </property>
   </widget>
@@ -274,6 +274,14 @@
    </property>
    <property name="text">
     <string>Edit coords</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
+  </action>
+  <action name="actionUncheckAll">
+   <property name="text">
+    <string>Uncheck all</string>
    </property>
    <property name="menuRole">
     <enum>QAction::NoRole</enum>

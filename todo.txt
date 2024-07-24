@@ -1,4 +1,3 @@
 * make keywords dialog dockable
 * uncheck 'edit keywords', 'edit coords' menu items on dialog hide
-* add 'Uncheck all' action
 * add copy/paste for EXIF coords and keywords
