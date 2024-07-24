@@ -26,6 +26,8 @@ signals:
 public:
     explicit CoordEditDialog(QWidget *parent = nullptr);
 
+    void setCoords(const QString& path, const QPointF& coord);
+
     QTreeView* view() const { return mView; }
     CoordEditModel* model() const { return mModel; }
 

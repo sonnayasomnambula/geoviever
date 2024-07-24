@@ -236,6 +236,8 @@ MainWindow::MainWindow(QWidget *parent)
                               ui->actionCopyCoords,
                               ui->actionPasteCoords });
 
+    addAction(ui->actionProxySave);
+
     connect(QGuiApplication::clipboard(), &QClipboard::changed, this, [this](QClipboard::Mode mode){
         if (mode == QClipboard::Clipboard) {
             QString text = QGuiApplication::clipboard()->text();
@@ -478,13 +480,7 @@ void MainWindow::mapClick(const QMouseEvent* e)
             if (path.isEmpty())
                 return;
 
-            if (auto photo = ExifStorage::data(path))
-            {
-                coordEditDialog()->model()->backup(photo->path, photo->position);
-                photo->position = QPointF(coord.latitude(), coord.longitude());
-                coordEditDialog()->model()->update(photo->path, photo->position);
-                emit ExifStorage::instance()->ready(photo);
-            }
+            coordEditDialog()->setCoords(path, QPointF(coord.latitude(), coord.longitude()));
         }
     }
 }
@@ -503,7 +499,7 @@ bool MainWindow::mapMouseMove(const QMouseEvent* e)
         mMapCursor.setCursor(isPressed ? Qt::ClosedHandCursor : Qt::OpenHandCursor);
     }
 
-    return isEditMode && isPressed;
+    return false;
 }
 
 QStringList MainWindow::history() const
@@ -586,17 +582,25 @@ void MainWindow::saveCoords()
             warnings.append(tr("Unable to save '%1': internal application error").arg(path));
         }
 
-        if (!file.save(path))
+        if (file.save(path))
+        {
+            coordEditDialog()->model()->remove(path);
+        }
+        else
         {
             warnings.append(tr("Save '%1' failed: %2").arg(path, file.errorString()));
             continue;
         }
     }
 
-    coordEditDialog()->model()->clear();
     QGuiApplication::restoreOverrideCursor();
 
-    if (!warnings.isEmpty())
+    if (warnings.isEmpty())
+    {
+        coordEditDialog()->button(CoordEditDialog::Button::Apply)->setEnabled(false);
+        coordEditDialog()->button(CoordEditDialog::Button::Revert)->setEnabled(false);
+    }
+    else
         QMessageBox::warning(this, "", warnings.join("\n"));
 }
 
@@ -620,6 +624,7 @@ void MainWindow::revertCoords()
     }
 
     coordEditDialog()->model()->clear();
+    coordEditDialog()->button(CoordEditDialog::Button::Apply)->setEnabled(false);
 }
 
 KeywordsDialog* MainWindow::keywordsDialog(CreateOption createOption)
@@ -1032,8 +1037,9 @@ void MainWindow::on_actionEditCoords_triggered(bool checked)
 {
     mMapCursor.setCursor(checked ? Qt::CrossCursor : Qt::ArrowCursor);
     if (checked)
-    {        
-        mTreeModel->setData(currentView()->currentIndex(), Qt::Checked, Qt::CheckStateRole);
+    {
+        for (const auto& i: currentSelection())
+            mTreeModel->setData(i, Qt::Checked, Qt::CheckStateRole);
         coordEditDialog()->show();
     }
 
@@ -1110,13 +1116,27 @@ void MainWindow::on_actionPasteCoords_triggered()
         if (auto dialog = coordEditDialog(CreateOption::Never))
         {
             QString path = IFileListModel::path(currentView()->currentIndex());
-            if (auto photo = ExifStorage::data(path))
-            {
-                dialog->model()->backup(photo->path, photo->position);
-                photo->position = QPointF(coord.latitude(), coord.longitude());
-                dialog->model()->update(photo->path, photo->position);
-                emit ExifStorage::instance()->ready(photo);
-            }
+            dialog->setCoords(path, QPointF(coord.latitude(), coord.longitude()));
         }
     }
+}
+
+void MainWindow::on_actionProxySave_triggered()
+{
+    auto coordDialog = coordEditDialog(CreateOption::Never);
+    auto kwordDialog = keywordsDialog(CreateOption::Never);
+    bool coord = coordDialog && coordDialog->isVisible();
+    bool kword = kwordDialog && kwordDialog->isVisible();
+    if (coord && kword)
+        return;
+
+    if (coord)
+        if (auto button = coordDialog->button(CoordEditDialog::Button::Apply))
+            if (button->isEnabled())
+                button->click();
+
+    if (kword)
+        if (auto button = kwordDialog->button(KeywordsDialog::Button::Apply))
+            if (button->isEnabled())
+                button->click();
 }

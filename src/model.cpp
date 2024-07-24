@@ -691,6 +691,28 @@ bool CoordEditModel::setData(const QModelIndex& index, const QVariant& value, in
     return false;
 }
 
+bool CoordEditModel::insertRows(int row, int count, const QModelIndex& parent)
+{
+    if (parent.isValid()) return false;
+    beginInsertRows(parent, row, row + count - 1);
+    mData.insert(row, count, {});
+    endInsertRows();
+    return true;
+}
+
+bool CoordEditModel::removeRows(int row, int count, const QModelIndex& parent)
+{
+    if (!parent.isValid() && row >= 0 && row + count - 1 < mData.size())
+    {
+        beginRemoveRows(parent, row, row + count - 1);
+        mData.remove(row, count);
+        endRemoveRows();
+        return true;
+    }
+
+    return false;
+}
+
 QVariant CoordEditModel::headerData(int section, Qt::Orientation orientation, int role) const
 {
     if (orientation == Qt::Horizontal && role == Qt::DisplayRole)
@@ -726,6 +748,12 @@ void CoordEditModel::update(const QString& path, const QPointF& position)
     beginInsertRows({}, row, row);
     mData.append({ path, QFileInfo(path).fileName(), position });
     endInsertRows();
+}
+
+void CoordEditModel::remove(const QString& path)
+{
+    removeRow(index(path).row());
+    mBackup.remove(path);
 }
 
 void CoordEditModel::clear()

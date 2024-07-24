@@ -138,6 +138,8 @@ private slots:
     void on_actionCopyCoords_triggered();
     void on_actionPasteCoords_triggered();
 
+    void on_actionProxySave_triggered();
+
 private:
     Ui::MainWindow* ui = nullptr;
     FileTreeModel*    mTreeModel = nullptr;

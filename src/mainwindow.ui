@@ -342,6 +342,14 @@
     <enum>QAction::NoRole</enum>
    </property>
   </action>
+  <action name="actionProxySave">
+   <property name="text">
+    <string>ProxySave</string>
+   </property>
+   <property name="shortcut">
+    <string>F2</string>
+   </property>
+  </action>
  </widget>
  <customwidgets>
   <customwidget>
