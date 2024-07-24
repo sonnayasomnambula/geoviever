@@ -118,3 +118,21 @@ TEST(GeoCoordinate, 2gis)
     EXPECT_NEAR(expected.latitude(), actual.latitude(), eps);
     EXPECT_NEAR(expected.longitude(), actual.longitude(), eps);
 }
+
+TEST(GeoCoordinate, DISABLED_invalid)
+{
+    {
+        QGeoCoordinate actual = GeoCoordinate::fromString("11111111 22222222");
+        EXPECT_FALSE(actual.isValid());
+    }
+
+    {
+        QGeoCoordinate actual = GeoCoordinate::fromString("aaaa bbbb");
+        EXPECT_FALSE(actual.isValid());
+    }
+
+    {
+        QGeoCoordinate actual = GeoCoordinate::fromString("19.11685' 47.187718\""); // TODO
+        EXPECT_FALSE(actual.isValid());
+    }
+}
