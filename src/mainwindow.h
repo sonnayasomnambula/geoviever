@@ -133,6 +133,9 @@ private slots:
     void on_actionEditCoords_triggered(bool checked);
     void on_actionIconView_toggled(bool toggled);
 
+    void on_actionCopyKeywords_triggered();
+    void on_actionPasteKeywords_triggered();
+
 private:
     Ui::MainWindow* ui = nullptr;
     FileTreeModel*    mTreeModel = nullptr;

@@ -1,5 +1,6 @@
 #include <QAbstractTableModel>
 #include <QCheckBox>
+#include <QClipboard>
 #include <QDesktopWidget>
 #include <QFileDialog>
 #include <QFileSystemModel>
@@ -210,6 +211,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     ui->actionSeparator1->setSeparator(true);
     ui->actionSeparator2->setSeparator(true);
+    ui->actionSeparator3->setSeparator(true);
 
     auto viewGroup = new QActionGroup(this);
     viewGroup->addAction(ui->actionIconView);
@@ -219,11 +221,19 @@ MainWindow::MainWindow(QWidget *parent)
                                 ui->actionSeparator1,
                                 ui->actionEditKeywords, ui->actionEditCoords,
                                 ui->actionSeparator2,
+                                ui->actionCopyKeywords, ui->actionPasteKeywords,
+                                ui->actionSeparator3,
                                 ui->actionIconView, ui->actionTreeView };
     ui->tree->addActions(actions);
     ui->list->addActions(actions);
 
     ui->checked->addActions({ ui->actionUncheck, ui->actionUncheckAll, ui->actionSeparator1, ui->actionEditKeywords, ui->actionEditCoords });
+
+    connect(QGuiApplication::clipboard(), &QClipboard::changed, this, [this](QClipboard::Mode mode){
+        if (mode == QClipboard::Clipboard) {
+            ui->actionPasteKeywords->setEnabled(!QGuiApplication::clipboard()->text().isEmpty());
+        }
+    });
 
     auto comboDelegate = new ItemButtonDelegate(QImage(":/cross-small.png"), ui->root);
     ui->root->setItemDelegate(comboDelegate);
@@ -1002,6 +1012,9 @@ void MainWindow::on_actionEditKeywords_triggered(bool checked)
     else
         updateKeywordsDialog(mTreeModel->path(currentSelection()));
 
+    ui->actionCopyKeywords->setVisible(checked);
+    ui->actionPasteKeywords->setVisible(checked);
+
     if (checked)
         keywordsDialog()->show();
 }
@@ -1023,3 +1036,44 @@ void MainWindow::on_actionIconView_toggled(bool toggled)
                             mTreeModel->filter() & ~QDir::NoDotDot :
                             mTreeModel->filter() | QDir::NoDotDot);
 }
+
+void MainWindow::on_actionCopyKeywords_triggered()
+{
+    QString path = IFileListModel::path(currentView()->currentIndex());
+    if (auto photo = ExifStorage::data(path))
+    {
+        QGuiApplication::clipboard()->setText(photo->keywords);
+    }
+}
+
+
+void MainWindow::on_actionPasteKeywords_triggered()
+{
+    if (auto dialog = keywordsDialog(CreateOption::Never))
+    {
+        QString clipboardText = QGuiApplication::clipboard()->text();
+        if (clipboardText.isEmpty()) return;
+        QStringList existingKeywords = dialog->model()->values();
+        QStringList clipboardKeywords = clipboardText.split(';');
+        for (const QString& kw: clipboardKeywords)
+        {
+            if (!existingKeywords.contains(kw))
+            {
+                int resp = QMessageBox::question(dialog, tr("Paste keywords"), tr("Paste '%1'?").arg(clipboardText));
+                if (resp != QMessageBox::Yes)
+                    return;
+                break;
+            }
+        }
+
+        for (const QString& kw: clipboardKeywords)
+        {
+            int row = existingKeywords.indexOf(kw);
+            QModelIndex index = row == -1 ?
+                dialog->model()->insert(kw) :
+                dialog->model()->index(row);
+            dialog->model()->setData(index, Qt::Checked, Qt::CheckStateRole);
+        }
+    }
+}
+
