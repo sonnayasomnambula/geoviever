@@ -135,6 +135,8 @@ private slots:
 
     void on_actionCopyKeywords_triggered();
     void on_actionPasteKeywords_triggered();
+    void on_actionCopyCoords_triggered();
+    void on_actionPasteCoords_triggered();
 
 private:
     Ui::MainWindow* ui = nullptr;

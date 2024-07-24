@@ -29,6 +29,7 @@
 #include "abstractsettings.h"
 #include "coordeditdialog.h"
 #include "exifstorage.h"
+#include "geocoordinate.h"
 #include "keywordsdialog.h"
 #include "model.h"
 #include "mainwindow.h"
@@ -222,16 +223,24 @@ MainWindow::MainWindow(QWidget *parent)
                                 ui->actionEditKeywords, ui->actionEditCoords,
                                 ui->actionSeparator2,
                                 ui->actionCopyKeywords, ui->actionPasteKeywords,
+                                ui->actionCopyCoords, ui->actionPasteCoords,
                                 ui->actionSeparator3,
                                 ui->actionIconView, ui->actionTreeView };
     ui->tree->addActions(actions);
     ui->list->addActions(actions);
 
-    ui->checked->addActions({ ui->actionUncheck, ui->actionUncheckAll, ui->actionSeparator1, ui->actionEditKeywords, ui->actionEditCoords });
+    ui->checked->addActions({ ui->actionUncheck, ui->actionUncheckAll,
+                              ui->actionSeparator1,
+                              ui->actionEditKeywords, ui->actionEditCoords,
+                              ui->actionSeparator2,
+                              ui->actionCopyCoords,
+                              ui->actionPasteCoords });
 
     connect(QGuiApplication::clipboard(), &QClipboard::changed, this, [this](QClipboard::Mode mode){
         if (mode == QClipboard::Clipboard) {
-            ui->actionPasteKeywords->setEnabled(!QGuiApplication::clipboard()->text().isEmpty());
+            QString text = QGuiApplication::clipboard()->text();
+            ui->actionPasteKeywords->setEnabled(!text.isEmpty());
+            ui->actionPasteCoords->setEnabled(GeoCoordinate::fromString(text).isValid());
         }
     });
 
@@ -1027,6 +1036,9 @@ void MainWindow::on_actionEditCoords_triggered(bool checked)
         mTreeModel->setData(currentView()->currentIndex(), Qt::Checked, Qt::CheckStateRole);
         coordEditDialog()->show();
     }
+
+    ui->actionCopyCoords->setVisible(checked);
+    ui->actionPasteCoords->setVisible(checked);
 }
 
 void MainWindow::on_actionIconView_toggled(bool toggled)
@@ -1077,3 +1089,34 @@ void MainWindow::on_actionPasteKeywords_triggered()
     }
 }
 
+void MainWindow::on_actionCopyCoords_triggered()
+{
+    QString path = IFileListModel::path(currentView()->currentIndex());
+    if (auto photo = ExifStorage::data(path))
+    {
+        if (!photo->position.isNull())
+        {
+            QGeoCoordinate coord(photo->position.x(), photo->position.y());
+            QGuiApplication::clipboard()->setText(coord.toString(QGeoCoordinate::DegreesWithHemisphere));
+        }
+    }
+}
+
+void MainWindow::on_actionPasteCoords_triggered()
+{
+    QGeoCoordinate coord = GeoCoordinate::fromString(QGuiApplication::clipboard()->text());
+    if (coord.isValid())
+    {
+        if (auto dialog = coordEditDialog(CreateOption::Never))
+        {
+            QString path = IFileListModel::path(currentView()->currentIndex());
+            if (auto photo = ExifStorage::data(path))
+            {
+                dialog->model()->backup(photo->path, photo->position);
+                photo->position = QPointF(coord.latitude(), coord.longitude());
+                dialog->model()->update(photo->path, photo->position);
+                emit ExifStorage::instance()->ready(photo);
+            }
+        }
+    }
+}

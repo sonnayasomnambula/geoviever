@@ -320,6 +320,28 @@
     <enum>QAction::NoRole</enum>
    </property>
   </action>
+  <action name="actionCopyCoords">
+   <property name="text">
+    <string>Copy coords</string>
+   </property>
+   <property name="visible">
+    <bool>false</bool>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
+  </action>
+  <action name="actionPasteCoords">
+   <property name="text">
+    <string>Paste coords</string>
+   </property>
+   <property name="visible">
+    <bool>false</bool>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
+  </action>
  </widget>
  <customwidgets>
   <customwidget>

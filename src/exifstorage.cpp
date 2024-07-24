@@ -202,14 +202,17 @@ void ExifStorage::cancel(const QString& path)
 
 QSharedPointer<Photo> ExifStorage::data(const QString& path)
 {
-    auto storage = instance();
-    QMutexLocker lock(&storage->mMutex);
-    auto i = storage->mData.constFind(path);
-    if (i != storage->mData.constEnd())
-        return *i;
+    if (!path.isEmpty())
+    {
+        auto storage = instance();
+        QMutexLocker lock(&storage->mMutex);
+        auto i = storage->mData.constFind(path);
+        if (i != storage->mData.constEnd())
+            return *i;
 
-    if (storage->mPending.insert(path))
-        storage->mCondition.wakeOne();
+        if (storage->mPending.insert(path))
+            storage->mCondition.wakeOne();
+    }
 
     return {};
 }
