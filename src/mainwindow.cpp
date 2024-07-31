@@ -305,11 +305,13 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     connect(ExifStorage::instance(), &ExifStorage::ready, mMapModel, &MapPhotoListModel::update);
-    connect(ExifStorage::instance(), &ExifStorage::remains, this, [this](int count){
+    connect(ExifStorage::instance(), &ExifStorage::remains, this, [this](int f, int p){
         static QElapsedTimer timer;
-        if (count && timer.isValid() && timer.elapsed() < 500)
+        static const int UPDATE_TIMEOUT = 400;
+        static const int CLEAR_TIMEOUT = 5000;
+        if ((f + p) && timer.isValid() && timer.elapsed() < UPDATE_TIMEOUT)
             return;
-        statusBar()->showMessage(count ? QString::number(count) : tr("Ready"), count ? 500 : 5000);
+        statusBar()->showMessage(f || p ? tr("%1 (%2) file(s) in progress...", nullptr, f + p).arg(f).arg(p) : tr("Ready"), f && p ? UPDATE_TIMEOUT : CLEAR_TIMEOUT);
         timer.restart();
     });
 

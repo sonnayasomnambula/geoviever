@@ -29,7 +29,7 @@
 //
 // Author: wan@google.com (Zhanyong Wan)
 
-//#include <QApplication>
+#include <QGuiApplication>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -46,8 +46,8 @@ GTEST_API_ int _tmain(int argc, TCHAR** argv) {
 #else
 GTEST_API_ int main(int argc, char** argv) {
 #endif  // GTEST_OS_WINDOWS_MOBILE
-//    QApplication a(argc, argv);
-//    Q_UNUSED(a);
+    QGuiApplication a(argc, argv); // QPixmap: Must construct a QGuiApplication before a QPixmap
+    Q_UNUSED(a);
 
     // Since Google Mock depends on Google Test, InitGoogleMock() is
     // also responsible for initializing Google Test.  Therefore there's

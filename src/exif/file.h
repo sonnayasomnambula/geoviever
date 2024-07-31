@@ -121,7 +121,8 @@ public:
     QMap<ExifTag, QVariant> values(ExifIfd ifd) const;
     QVariant value(ExifIfd ifd, ExifTag tag) const;
 
-    QPixmap thumbnail(int width = 0, int height = 0) const;
+    enum Thumbnail { Embedded = 1, ScaledJpeg, Any };
+    QPixmap thumbnail(int width = 0, int height = 0, Thumbnail type = Any) const;
 
     ExifData* data() const;
     ExifContent* content(ExifIfd ifd) const;

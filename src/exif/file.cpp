@@ -707,9 +707,9 @@ void File::remove(ExifIfd ifd, ExifTag tag)
     FileHelper::erase(ifd, tag, this);
 }
 
-QPixmap File::thumbnail(int width, int height) const
+QPixmap File::thumbnail(int width, int height, Thumbnail type) const
 {
-    if (mExifData && mExifData->data && mExifData->size)
+    if ((type & Thumbnail::Embedded) && mExifData && mExifData->data && mExifData->size)
     {
         QByteArray data = QByteArray::fromRawData(reinterpret_cast<const char*>(mExifData->data), mExifData->size); // not copied
         QBuffer buffer(&data);
@@ -731,7 +731,7 @@ QPixmap File::thumbnail(int width, int height) const
         return Pics::fromImageReader(&reader, width, height, orientation);
     }
 
-    if (!mFileName.isEmpty())
+    if ((type & Thumbnail::ScaledJpeg) && !mFileName.isEmpty())
     {
         QImageReader reader(mFileName);
         Orientation orientation = value(EXIF_IFD_0, EXIF_TAG_ORIENTATION).toInt();

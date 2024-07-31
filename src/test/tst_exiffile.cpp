@@ -1,6 +1,5 @@
 #include <QCoreApplication>
 #include <QDirIterator>
-#include <QDebug>
 #include <QFileInfo>
 #include <QPixmap>
 #include <QStandardPaths>

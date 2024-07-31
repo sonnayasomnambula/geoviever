@@ -1,5 +1,4 @@
 #include <QBoxLayout>
-#include <QDebug>
 #include <QHeaderView>
 #include <QTreeView>
 #include <QPushButton>

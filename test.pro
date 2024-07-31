@@ -1,5 +1,5 @@
 QT -= gui
-QT += location positioning
+QT += core location positioning testlib
 
 CONFIG += c++11 console
 CONFIG -= app_bundle
@@ -23,7 +23,8 @@ SOURCES += \
     src/test/tmpjpegfile.cpp \
     src/test/tst.cpp \
     src/test/tst_exiffile.cpp \
-    src/test/tst_geocoordinate.cpp
+    src/test/tst_exifstorage.cpp \
+    src/test/tst_geocoordinate.cpp \
 
 HEADERS += \
     src/exif/file.h \

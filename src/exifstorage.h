@@ -1,17 +1,17 @@
 #ifndef EXIFSTORAGE_H
 #define EXIFSTORAGE_H
 
-#include <QObject>
 #include <QMap>
-#include <QMutex>
+#include <QObject>
 #include <QPixmap>
 #include <QPointF>
-#include <QSet>
 #include <QThread>
 #include <QStringList>
 #include <QWaitCondition>
 
 #include "exif/file.h"
+
+#include "threadsafe.hpp"
 
 struct Photo
 {
@@ -29,20 +29,8 @@ bool operator !=(const ExifData& L, const ExifData& R);
 Q_DECLARE_METATYPE(QSharedPointer<Photo>)
 
 
-class ThreadSafeStringSet : private QSet<QString>
-{
-    using Super = QSet<QString>;
-    mutable QMutex mMutex;
-
-public:
-    bool insert(const QString& s);
-    void remove(const QString& s);
-
-    void clear();
-    QString takeFirst();
-
-    int size() const;
-};
+using ThreadSafeStringSet = ThreadSafeSet<QString>;
+using ThreadSafePhotoHash = ThreadSafeHash<QString, QWeakPointer<Photo>>;
 
 
 class WaitCondition : private QWaitCondition
@@ -69,21 +57,32 @@ class ExifReader : public QThread
     Q_OBJECT
 
 signals:
-    void ready(const QSharedPointer<Photo>& photo);
-    void failed(const QString& path);
+    void ready(const QSharedPointer<Photo>& photo, int loadState);
+    void noop();
 
 public:
-    void parse(const QString& path);
+    enum Loaded
+    {
+        LoadedEssential = 1, // position, orientation & keywords
+        LoadedThumbnail = 2, // embedded or generated thumbnail
+    };
 
-    explicit ExifReader(ThreadSafeStringSet* s, WaitCondition* c) : mPending(s), mCondition(c) {}
+    Q_DECLARE_FLAGS(LoadState, Loaded)
+    Q_FLAG(LoadState)
+
+    void parse(const QString& path);
+    void parseThumbnail(const QSharedPointer<Photo>& photo);
+
+    explicit ExifReader(WaitCondition* condition)
+        : mCondition(condition) {}
     void run() override;
     void stop() { mTerminated = true; }
 
-public:
-    static QSharedPointer<Photo> load(const QString& path);
     static int thumbnailSize;
 
-    ThreadSafeStringSet* mPending;
+    ThreadSafeStringSet mPending;
+    ThreadSafePhotoHash mThumbnailPending;
+
     WaitCondition* mCondition;
     bool mTerminated = false;
 };
@@ -94,7 +93,7 @@ class ExifStorage : public QObject
 
 signals:
     void ready(const QSharedPointer<Photo>& photo);
-    void remains(int count);
+    void remains(int full, int partially);
     void keywordAdded(const QString& keyword, int count);
 
 public:
@@ -116,11 +115,12 @@ public:
 private:
     ExifStorage();
    ~ExifStorage() override;
-    void add(const QSharedPointer<Photo>& photo);
-    void fail(const QString& path);
+    void add(const QSharedPointer<Photo>& photo, int loadState);
 
     ExifReader mThread;
     ThreadSafeStringSet mPending;
+    ThreadSafeStringSet mThumbnailPending;
+
     WaitCondition mCondition;
 
     QMutex mMutex;

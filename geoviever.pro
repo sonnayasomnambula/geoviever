@@ -31,6 +31,7 @@ HEADERS += \
     src/pics.h \
     src/pixmaplabel.h \
     src/qtcompat.h \
+    src/threadsafe.hpp \
     src/tooltip.h
 
 FORMS += \
