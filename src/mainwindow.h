@@ -129,15 +129,14 @@ private slots:
     void on_actionCheck_triggered();
     void on_actionUncheck_triggered();
     void on_actionUncheckAll_triggered();
-    void on_actionEditKeywords_triggered(bool checked);
-    void on_actionEditCoords_triggered(bool checked);
+    void on_actionEditKeywords_toggled(bool checked);
+    void on_actionEditCoords_toggled(bool checked);
     void on_actionIconView_toggled(bool toggled);
 
     void on_actionCopyKeywords_triggered();
     void on_actionPasteKeywords_triggered();
     void on_actionCopyCoords_triggered();
     void on_actionPasteCoords_triggered();
-
     void on_actionProxySave_triggered();
 
 private:

@@ -1,2 +1,1 @@
 * make keywords dialog dockable
-* uncheck 'edit keywords', 'edit coords' menu items on dialog hide

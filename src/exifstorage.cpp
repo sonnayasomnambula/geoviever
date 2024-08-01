@@ -11,9 +11,6 @@
 #include "exifstorage.h"
 #include "pics.h"
 
-// #undef qDebug
-// #define qDebug QT_NO_QDEBUG_MACRO
-
 Q_LOGGING_CATEGORY(reader, "ExifReader", QtWarningMsg)
 Q_LOGGING_CATEGORY(store, "ExifStorage", QtWarningMsg)
 

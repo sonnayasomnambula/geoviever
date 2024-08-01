@@ -29,6 +29,7 @@
 #include "abstractsettings.h"
 #include "coordeditdialog.h"
 #include "exifstorage.h"
+#include "eventwatcher.h"
 #include "geocoordinate.h"
 #include "keywordsdialog.h"
 #include "model.h"
@@ -535,6 +536,7 @@ CoordEditDialog* MainWindow::coordEditDialog(CreateOption createOption)
     dialog->view()->setItemDelegateForColumn(CoordEditModel::COLUMN_POSITION, new GeoCoordinateDelegate(dialog)); // TODO incapsulate
     connect(dialog, &CoordEditDialog::apply, this, &MainWindow::saveCoords);
     connect(dialog, &CoordEditDialog::revert, this, &MainWindow::revertCoords);
+    connect(EventWatcher::watch(dialog, QEvent::Close), &EventWatcher::caught, this, [this]{ ui->actionEditCoords->setChecked(false); });
 
     settings.coordEditDialog.geometry.restore(dialog);
     settings.coordEditDialog.header.state.restore(dialog->view()->header());
@@ -651,6 +653,7 @@ KeywordsDialog* MainWindow::keywordsDialog(CreateOption createOption)
 
     connect(dialog, &KeywordsDialog::changed, this, &MainWindow::keywordsChanged);
     connect(dialog, &KeywordsDialog::apply, this, &MainWindow::saveKeywords);
+    connect(EventWatcher::watch(dialog, QEvent::Close), &EventWatcher::caught, this, [this]{ ui->actionEditKeywords->setChecked(false); });
 
     if (currentView()->selectionModel()->hasSelection())
         updateKeywordsDialog(mTreeModel->path(currentSelection()));
@@ -1019,7 +1022,7 @@ void MainWindow::on_actionUncheckAll_triggered()
         mTreeModel->setData(tid, Qt::Unchecked, Qt::CheckStateRole);
 }
 
-void MainWindow::on_actionEditKeywords_triggered(bool checked)
+void MainWindow::on_actionEditKeywords_toggled(bool checked)
 {
     keywordsDialog()->setMode(checked ? KeywordsDialog::Mode::Edit : KeywordsDialog::Mode::Filter);
 
@@ -1031,15 +1034,18 @@ void MainWindow::on_actionEditKeywords_triggered(bool checked)
     ui->actionCopyKeywords->setVisible(checked);
     ui->actionPasteKeywords->setVisible(checked);
 
-    if (checked)
+    if (checked) {
+        emit QGuiApplication::clipboard()->changed(QClipboard::Clipboard);
         keywordsDialog()->show();
+    }
 }
 
-void MainWindow::on_actionEditCoords_triggered(bool checked)
+void MainWindow::on_actionEditCoords_toggled(bool checked)
 {
     mMapCursor.setCursor(checked ? Qt::CrossCursor : Qt::ArrowCursor);
     if (checked)
     {
+        emit QGuiApplication::clipboard()->changed(QClipboard::Clipboard);
         for (const auto& i: currentSelection())
             mTreeModel->setData(i, Qt::Checked, Qt::CheckStateRole);
         coordEditDialog()->show();

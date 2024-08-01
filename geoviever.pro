@@ -7,6 +7,7 @@ include(src/3rdparty/libjpeg/libjpeg.pri)
 
 SOURCES += \
     src/coordeditdialog.cpp \
+    src/eventwatcher.cpp \
     src/exif/file.cpp \
     src/exif/utils.cpp \
     src/exifstorage.cpp \
@@ -21,6 +22,7 @@ SOURCES += \
 
 HEADERS += \
     src/coordeditdialog.h \
+    src/eventwatcher.h \
     src/exif/file.h \
     src/exif/utils.h \
     src/exifstorage.h \
