@@ -44,10 +44,6 @@ public:
                      QAbstractItemModel* model,
                      const QStyleOptionViewItem& option,
                      const QModelIndex& index) override;
-
-protected:
-    bool eventFilter(QObject* object, QEvent* event) override;
-
 private:
     QComboBox* mCombo = nullptr;
     QImage mImage;

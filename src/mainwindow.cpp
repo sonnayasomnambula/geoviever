@@ -119,7 +119,7 @@ ItemButtonDelegate::ItemButtonDelegate(const QImage& buttonImage, QComboBox* par
     , mCombo(parent)
     , mImage(buttonImage)
 {
-    mCombo->view()->installEventFilter(this);
+    connect(EventWatcher::watch(mCombo->view(), QEvent::Hide), &EventWatcher::caught, this, [this]{ mHovered = -1; });
 
     mButtonSize = std::max(mButtonSize, mImage.width());
     mButtonSize = std::max(mButtonSize, mImage.height());
@@ -190,13 +190,6 @@ bool ItemButtonDelegate::editorEvent(QEvent *event, QAbstractItemModel* model, c
     }
 
     return Super::editorEvent(event, model, option, index);
-}
-
-bool ItemButtonDelegate::eventFilter(QObject *object, QEvent *event)
-{
-    if (event->type() == QEvent::Hide)
-        mHovered = -1;
-    return Super::eventFilter(object, event);
 }
 
 MainWindow::MainWindow(QWidget *parent)
