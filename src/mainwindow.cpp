@@ -353,9 +353,9 @@ bool MainWindow::eventFilter(QObject* o, QEvent* e)
     if (o == ui->list && e->type() == QEvent::ToolTip)
         showTooltip(static_cast<QHelpEvent*>(e)->globalPos(), ui->list);
     if (o == ui->map && e->type() == QEvent::MouseButtonPress)
-        mapClick(static_cast<QMouseEvent*>(e));
+        return mapClick(static_cast<QMouseEvent*>(e));
     if (o == ui->map && e->type() == QEvent::MouseButtonRelease)
-        mapClick(static_cast<QMouseEvent*>(e));
+        return mapClick(static_cast<QMouseEvent*>(e));
     if (o == ui->map && e->type() == QEvent::MouseMove)
         return mapMouseMove(static_cast<QMouseEvent*>(e));
     return QObject::eventFilter(o, e);
@@ -454,45 +454,65 @@ void MainWindow::showTooltip(const QPoint& pos, QAbstractItemView* view)
     widget->showAt(pos, 2);
 }
 
-void MainWindow::mapClick(const QMouseEvent* e)
+bool MainWindow::mapClick(const QMouseEvent* e)
 {
     if (!ui->actionEditCoords->isChecked())
-        return;
+        return false;
 
-    if (mMapSelectionModel->howeredRow() != -1)
-        mMapCursor.setCursor(e->type() == QEvent::MouseButtonPress ? Qt::ClosedHandCursor : Qt::OpenHandCursor);
+    if (e->type() == QEvent::MouseButtonPress && e->button() == Qt::LeftButton && mMapSelectionModel->howeredRow() != -1)
+    {
+        mDragged = IFileListModel::path(mMapModel->index(mMapSelectionModel->howeredRow()));
+        mMapCursor.setCursor(Qt::ClosedHandCursor);
+        return true; // fixes bounces when scrolling the map
+    }
 
-    if (e->type() == QEvent::MouseButtonRelease && e->button() == Qt::LeftButton)
+    if (e->type() == QEvent::MouseButtonRelease && e->button() == Qt::LeftButton && !(mPointed.isEmpty() && mDragged.isEmpty()))
     {
         if (auto map = ui->map->rootObject()->findChild<QObject*>("map"))
         {
             QGeoCoordinate coord;
             QMetaObject::invokeMethod(map, "toCoordinate", Q_RETURN_ARG(QGeoCoordinate, coord), Q_ARG(QPointF, QPointF(e->pos())));
-            qDebug() << "QML function returned:" << coord << "HR" << mMapSelectionModel->howeredRow();
 
-            QString path = IFileListModel::path(mMapModel->index(mMapSelectionModel->howeredRow()));
-            if (path.isEmpty())
-                path = IFileListModel::path(currentView()->currentIndex());
-            if (path.isEmpty())
-                return;
+            coordEditDialog()->setCoords(mPointed.isEmpty() ? mDragged : mPointed, QPointF(coord.latitude(), coord.longitude()));
 
-            coordEditDialog()->setCoords(path, QPointF(coord.latitude(), coord.longitude()));
+            mPointed.clear();
+            mDragged.clear();
+
+            mMapCursor.setCursor(Qt::OpenHandCursor);
+
+            return false; // otherwise the click with CrossCursor (setting coords to mPointed) leads to sticky scrolling of the map
         }
     }
+
+    return false;
 }
 
 bool MainWindow::mapMouseMove(const QMouseEvent* e)
-{
-    const bool isEditMode = ui->actionEditCoords->isChecked();
-    const bool isOnPicture = mMapSelectionModel->howeredRow() != -1;
-    const bool isPressed = (e->buttons() & Qt::LeftButton);
+{    
+    if (!ui->actionEditCoords->isChecked())
+        return false;
 
-    if (!isEditMode)
-        mMapCursor.setCursor(Qt::ArrowCursor);
-    else if (!isOnPicture)
-        mMapCursor.setCursor(Qt::CrossCursor);
-    else {
-        mMapCursor.setCursor(isPressed ? Qt::ClosedHandCursor : Qt::OpenHandCursor);
+    if (e->buttons() & Qt::LeftButton)
+    {
+        if (!mDragged.isEmpty())
+        {
+            if (auto map = ui->map->rootObject()->findChild<QObject*>("map"))
+            {
+                QGeoCoordinate coord;
+                QMetaObject::invokeMethod(map, "toCoordinate", Q_RETURN_ARG(QGeoCoordinate, coord), Q_ARG(QPointF, QPointF(e->pos())));
+
+                coordEditDialog()->setCoords(mDragged, QPointF(coord.latitude(), coord.longitude()));
+
+                return true;
+            }
+        }
+    }
+    else
+    {
+        mMapCursor.setCursor(mPointed.isEmpty() ?
+                                mMapSelectionModel->howeredRow() == -1 ?
+                                    Qt::ArrowCursor : Qt::OpenHandCursor
+                                : Qt::CrossCursor);
     }
 
     return false;
@@ -856,9 +876,18 @@ void MainWindow::syncCurrentIndex(const QModelIndex& currentIndex)
         QModelIndex& previousIndex = mCurrentIndex[source];
         if (previousIndex != currentIndex)
         {
+            QString path = IFileListModel::path(currentIndex);
+
+            if (ui->actionEditCoords->isChecked())
+            {
+                if (source == mMapSelectionModel)
+                    return;
+
+                if (auto data = ExifStorage::data(path))
+                    mPointed = data->position.isNull() ? path : "";
+            }
 
             previousIndex = currentIndex;
-            QString path = IFileListModel::path(currentIndex);
 
             // qDebug() << __func__ << "from" << source->objectName() << path;
 
@@ -1042,6 +1071,10 @@ void MainWindow::on_actionEditCoords_toggled(bool checked)
         for (const auto& i: currentSelection())
             mTreeModel->setData(i, Qt::Checked, Qt::CheckStateRole);
         coordEditDialog()->show();
+
+        auto ci = currentView()->currentIndex();
+        if (mTreeModel->data(ci.siblingAtColumn(FileTreeModel::COLUMN_COORDS)).isNull())
+            mPointed = IFileListModel::path(ci);
     }
 
     ui->actionCopyCoords->setVisible(checked);

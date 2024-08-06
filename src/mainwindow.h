@@ -70,7 +70,7 @@ private:
 
     void showMapTooltip(const QPoint& pos);
     void showTooltip(const QPoint& pos, QAbstractItemView* view);
-    void mapClick(const QMouseEvent* e);
+    bool mapClick(const QMouseEvent* e);
     bool mapMouseMove(const QMouseEvent* e);
 
     class CursorIcon
@@ -89,6 +89,9 @@ private:
         }
 
     } mMapCursor;
+
+    QString mPointed; // A picture without coordinates, the coordinates for which will be selected by clicking on the map
+    QString mDragged; // A picture in the process of dragging on the map
 
     QStringList history() const;
     void setHistory(const QStringList& history);

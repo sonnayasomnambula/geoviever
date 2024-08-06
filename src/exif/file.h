@@ -74,7 +74,7 @@ public:
 ///         auto values = exif.values(ifd);
 ///         for (auto tag: values.keys())
 ///         {
-///             qDebug() << exif_tag_get_name_in_ifd(tag, ifd));
+///             qDebug() << exif_tag_get_name_in_ifd(tag, ifd);
 ///             qDebug() << exif_tag_get_description_in_ifd(tag, ifd);
 ///             qDebug() << values[tag];
 ///             qDebug() << "---------------------";
