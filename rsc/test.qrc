@@ -3,5 +3,6 @@
         <file>with_gps.jpg</file>
         <file>without_gps.jpg</file>
         <file>without_exif.jpg</file>
+        <file>tags.jpg</file>
     </qresource>
 </RCC>

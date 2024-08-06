@@ -124,3 +124,10 @@ TEST(ExifFile, readWrite)
         }
     }
 }
+
+TEST(ExifFile, tags)
+{
+    Exif::File exif;
+    ASSERT_TRUE(exif.load(":/img/tags.jpg"));
+    EXPECT_FALSE(exif.value(EXIF_IFD_0, EXIF_TAG_XP_KEYWORDS).isNull());
+}
