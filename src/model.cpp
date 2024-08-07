@@ -434,7 +434,13 @@ bool MapPhotoListModel::Bucket::remove(const QString& path)
                 QPointF pos = position * photos.size();
                 pos -= photo->position;
                 photos.removeAt(i);
-                pos /= photos.size();
+                if (photos.size())
+                {
+                    if (photos.size() == 1)
+                        position = photos.front()->position;
+                    else
+                        position = pos / photos.size();
+                }
                 return true;
             }
         }
