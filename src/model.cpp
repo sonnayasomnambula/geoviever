@@ -72,7 +72,7 @@ bool Checker::setCheckState(const QModelIndex& index, const QVariant& value)
     return true;
 }
 
-void Checker::updateChildrenCheckState(const QModelIndex &index)
+void Checker::updateChildrenCheckState(const QModelIndex& index)
 {
     if (!index.isValid())
         return;

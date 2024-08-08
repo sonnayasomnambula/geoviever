@@ -760,14 +760,19 @@ void MainWindow::saveKeywords()
             continue;
         }
 
-        file.setValue(EXIF_IFD_0, EXIF_TAG_XP_KEYWORDS, keywordsDialog()->model()->values(Qt::Checked).join(';'));
+        QString keywords = keywordsDialog()->model()->values(Qt::Checked).join(';');
+        file.setValue(EXIF_IFD_0, EXIF_TAG_XP_KEYWORDS, keywords);
 
         if (!file.save(path)) {
             warnings.append(tr("Save '%1' failed: %2").arg(path, file.errorString()));
             continue;
         }
 
-        ExifStorage::parse(path);
+        if (QSharedPointer<Photo> photo = ExifStorage::data(path))
+        {
+            photo->keywords = keywords;
+            emit ExifStorage::instance()->ready(photo);
+        }
     }
 
     QGuiApplication::restoreOverrideCursor();
