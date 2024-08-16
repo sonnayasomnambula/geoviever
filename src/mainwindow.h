@@ -103,7 +103,6 @@ private:
     KeywordsDialog* keywordsDialog(CreateOption createOption = CreateOption::IfNotExists);
     void keywordsChanged();
     void updateKeywordsDialog(const QStringList& selectedFiles);
-    void saveKeywords();
 
     void updatePicture(const QString& path);
 
@@ -114,6 +113,8 @@ private:
     void syncCurrentIndex(const QModelIndex& currentIndex);
     void applyCurrentIndex(QAbstractItemView* to, const QString& path);
     void applyCurrentIndex(QItemSelectionModel* to, const QString& path, QAbstractItemView* view = nullptr);
+
+    void restoreSelection();
 
     QAbstractItemView* currentView() const;
     QModelIndexList currentSelection() const;
@@ -147,6 +148,9 @@ private:
 
     QMap<QItemSelectionModel*, QModelIndexList> mSelection;
     QMap<QItemSelectionModel*, QModelIndex> mCurrentIndex;
+
+    QPair<QItemSelectionModel*, QModelIndexList> mSelectionBackup;
+    QPair<QItemSelectionModel*, QModelIndex> mCurrentIndexBackup;
 };
 
 #endif // MAINWINDOW_H

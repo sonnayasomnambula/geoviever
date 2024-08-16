@@ -230,17 +230,15 @@ public:
     QModelIndex index(int row, int column, const QModelIndex& parent = {}) const override;
     QModelIndex index(const QString& path) const override;
     QModelIndex parent(const QModelIndex& index) const override;
-    // Qt::ItemFlags flags(const QModelIndex& index) const override;
     QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
-    bool setData(const QModelIndex& index, const QVariant& value, int role = Qt::EditRole) override;
 
     bool insertRows(int row, int count, const QModelIndex& parent) override;
     bool removeRows(int row, int count, const QModelIndex& parent) override;
 
     QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
 
-    void backup(const QString& path, const QPointF& position);
-    void update(const QString& path, const QPointF& position);
+    void backup(const QSharedPointer<Photo>& photo);
+    void update(const QSharedPointer<Photo>& photo);
     void remove(const QString& path);
     void clear();
 
@@ -249,8 +247,7 @@ public:
 
 private:
     QMap<QString, QPointF> mBackup;
-    struct Data { QString path, name; QPointF position; };
-    QVector<Data> mData;
+    QVector<QSharedPointer<Photo>> mData;
 };
 
 #endif // MODEL_H

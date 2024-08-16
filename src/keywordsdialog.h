@@ -60,10 +60,9 @@ class KeywordsDialog : public QDialog
 
 signals:
     void changed();
-    void apply();
 
 public:
-    explicit KeywordsDialog(QWidget *parent = nullptr);
+    explicit KeywordsDialog(QWidget* parent = nullptr);
 
     enum class Mode { Filter, Edit };
     void setMode(Mode mode);
@@ -75,16 +74,16 @@ public:
     enum class Button { Insert, Apply, Or, And };
     QAbstractButton* button(Button button) const;
 
+    void setFiles(const QStringList& files);
+    void apply();
+
 private:
     QTreeView* mView = nullptr;
     KeywordsModel* mModel = nullptr;
 
-    QPushButton* mInsert = nullptr;
-    QPushButton* mApply = nullptr;
-    QRadioButton* mOr = nullptr;
-    QRadioButton* mAnd = nullptr;
-
+    QMap<Button, QAbstractButton*> mButtons;
     Mode mMode = Mode::Edit;
+    QStringList mFiles;
 };
 
 #endif // KEYWORDSDIALOG_H

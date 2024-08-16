@@ -1,5 +1,4 @@
 #include <QAbstractTableModel>
-#include <QCheckBox>
 #include <QClipboard>
 #include <QDesktopWidget>
 #include <QFileDialog>
@@ -28,6 +27,7 @@
 
 #include "abstractsettings.h"
 #include "coordeditdialog.h"
+#include "dialog.h"
 #include "exifstorage.h"
 #include "eventwatcher.h"
 #include "geocoordinate.h"
@@ -58,7 +58,6 @@ struct Settings : AbstractSettings
 
     struct {
         Geometry geometry = "keywordDialog/geometry";
-        Tag<bool> overwriteSilently = "keywordDialog/overwriteSilently";
         Tag<bool> orLogic = "keywordDialog/orLogic";
     } keywordDialog;
 
@@ -312,6 +311,7 @@ MainWindow::MainWindow(QWidget *parent)
     ui->map->installEventFilter(this);
     ui->tree->installEventFilter(this);
     ui->list->installEventFilter(this);
+    ui->checked->installEventFilter(this);
 
     QQmlEngine* engine = ui->map->engine();
     engine->rootContext()->setContextProperty("controller", mMapModel);
@@ -352,6 +352,8 @@ bool MainWindow::eventFilter(QObject* o, QEvent* e)
         showTooltip(static_cast<QHelpEvent*>(e)->globalPos(), ui->tree);
     if (o == ui->list && e->type() == QEvent::ToolTip)
         showTooltip(static_cast<QHelpEvent*>(e)->globalPos(), ui->list);
+    if (o == ui->checked && e->type() == QEvent::ToolTip)
+        showTooltip(static_cast<QHelpEvent*>(e)->globalPos(), ui->checked);
     if (o == ui->map && e->type() == QEvent::MouseButtonPress)
         return mapClick(static_cast<QMouseEvent*>(e));
     if (o == ui->map && e->type() == QEvent::MouseButtonRelease)
@@ -444,8 +446,9 @@ void MainWindow::showMapTooltip(const QPoint& pos)
 void MainWindow::showTooltip(const QPoint& pos, QAbstractItemView* view)
 {
     QModelIndex index = view->indexAt(view->viewport()->mapFromGlobal(pos)).siblingAtColumn(0);
-    if (!index.isValid() || mTreeModel->isDir(index)) return;
-    QString path = mTreeModel->filePath(index);
+    QString path = IFileListModel::path(index);
+    if (path.isEmpty() || QFileInfo(path).isDir())
+        return;
 
     static auto widget = new LabelTooltip(this);
 
@@ -559,18 +562,8 @@ CoordEditDialog* MainWindow::coordEditDialog(CreateOption createOption)
 
 void MainWindow::saveCoords()
 {
-    Settings settings;
-
-    if (!settings.keywordDialog.overwriteSilently)
-    {
-        using QMBox = QMessageBox;
-        QMBox box(QMBox::Question, "", tr("Overwrite %1 file(s)?").arg(coordEditDialog()->model()->rowCount()), QMBox::Yes | QMBox::No, this);
-        box.setCheckBox(new QCheckBox(tr("Do not ask me next time")));
-        int ansver = box.exec();
-        settings.keywordDialog.overwriteSilently = box.checkBox()->isChecked();
-        if (ansver != QMBox::Yes)
-            return;
-    }
+    if (!Dialog::canOverwrite(coordEditDialog()->model()->rowCount(), coordEditDialog()))
+        return;
 
     QGuiApplication::setOverrideCursor(Qt::WaitCursor);
     QStringList warnings;
@@ -661,11 +654,8 @@ KeywordsDialog* MainWindow::keywordsDialog(CreateOption createOption)
     dialog->model()->clear();
     for (const QString& keyword: ExifStorage::keywords())
         dialog->model()->insert(keyword, ExifStorage::count(keyword));
-    dialog->view()->resizeColumnToContents(KeywordsModel::COLUMN_KEYWORD); // QHeaderView::ResizeMode doesn't seem to work
-    dialog->view()->resizeColumnToContents(KeywordsModel::COLUMN_KEYWORD_COUNT); // TODO incapsulate this
 
     connect(dialog, &KeywordsDialog::changed, this, &MainWindow::keywordsChanged);
-    connect(dialog, &KeywordsDialog::apply, this, &MainWindow::saveKeywords);
     connect(EventWatcher::watch(dialog, QEvent::Close), &EventWatcher::caught, this, [this]{ ui->actionEditKeywords->setChecked(false); });
 
     if (currentView()->selectionModel()->hasSelection())
@@ -697,92 +687,9 @@ void MainWindow::keywordsChanged()
 
 void MainWindow::updateKeywordsDialog(const QStringList& selectedFiles)
 {
-    if (auto dialog = keywordsDialog(CreateOption::Never)) {
-        if (dialog->mode() == KeywordsDialog::Mode::Edit) {
-
-            QSet<QString> all, common, partially;
-
-            for (const QString& path: selectedFiles) {
-                if (QFileInfo(path).isDir()) continue;
-                QString keywordsTag;
-                if (auto photo = ExifStorage::data(path))
-                    keywordsTag = photo->keywords;
-                else
-                    keywordsTag = Exif::File(path, false).value(EXIF_IFD_0, EXIF_TAG_XP_KEYWORDS).toString();
-
-                QSet<QString> keywords;
-
-                for (QString& s: keywordsTag.split(';'))
-                    keywords.insert(s.trimmed());
-
-                if (all.isEmpty()) {
-                    all = common = keywords;
-                } else {
-                    all.unite(keywords);
-                    common.intersect(keywords);
-                    partially = all - common;
-                }
-            }
-
-            dialog->model()->setChecked(common, partially);
-            dialog->button(KeywordsDialog::Button::Apply)->setEnabled(false);
-        }
-    }
-}
-
-void MainWindow::saveKeywords()
-{
-    Settings settings;
-
-    if (!currentView()->selectionModel()->hasSelection())
-        return;
-
-    QStringList selectedFiles = mTreeModel->path(currentSelection());
-
-    if (!settings.keywordDialog.overwriteSilently) {
-        using QMBox = QMessageBox;
-        QMBox box(QMBox::Question, "", tr("Overwrite %n file(s)?", nullptr, selectedFiles.size()), QMBox::Yes | QMBox::No, this);
-        box.setCheckBox(new QCheckBox(tr("Do not ask me next time")));
-        int ansver = box.exec();
-        settings.keywordDialog.overwriteSilently = box.checkBox()->isChecked();
-        if (ansver != QMBox::Yes)
-            return;
-    }
-
-    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
-    QStringList warnings;
-
-    for (const auto& path: selectedFiles) {
-        if (QFileInfo(path).isDir()) continue;
-        Exif::File file;
-        if (!file.load(path)) {
-            warnings.append(tr("Load '%1' failed: %2").arg(path, file.errorString()));
-            continue;
-        }
-
-        QString keywords = keywordsDialog()->model()->values(Qt::Checked).join(';');
-        file.setValue(EXIF_IFD_0, EXIF_TAG_XP_KEYWORDS, keywords);
-
-        if (!file.save(path)) {
-            warnings.append(tr("Save '%1' failed: %2").arg(path, file.errorString()));
-            continue;
-        }
-
-        if (QSharedPointer<Photo> photo = ExifStorage::data(path))
-        {
-            photo->keywords = keywords;
-            emit ExifStorage::instance()->ready(photo);
-        }
-    }
-
-    QGuiApplication::restoreOverrideCursor();
-
-    if (warnings.isEmpty()) {
-        keywordsDialog()->button(KeywordsDialog::Button::Apply)->setEnabled(false);
-        keywordsDialog()->model()->setExtraFlags(Qt::NoItemFlags); // reset
-    } else {
-        QMessageBox::warning(this, "", warnings.join("\n"));
-    }
+    if (auto dialog = keywordsDialog(CreateOption::Never))
+        if (dialog->mode() == KeywordsDialog::Mode::Edit)
+            dialog->setFiles(selectedFiles);
 }
 
 void MainWindow::updatePicture(const QString& path)
@@ -814,7 +721,29 @@ void MainWindow::syncSelection()
         auto currentSelection = source->model() == mTreeModel ? source->selectedRows() : source->selectedIndexes();
         if (previousSelection != currentSelection)
         {
+            mSelectionBackup = { source, previousSelection };
             previousSelection = currentSelection;
+
+            if (ui->actionEditKeywords->isChecked())
+            {
+                if (auto dialog = keywordsDialog(CreateOption::Never))
+                {
+                    if (dialog->button(KeywordsDialog::Button::Apply)->isEnabled())
+                    {
+                        using QMB = QMessageBox;
+                        switch (QMB::warning(this, "", "Apply keywords?", QMB::Yes | QMB::No | QMB::Cancel))
+                        {
+                        case QMB::Cancel:
+                            QMetaObject::invokeMethod(this, &MainWindow::restoreSelection, Qt::QueuedConnection);
+                            return; // only return if cancel
+                        case QMB::Yes:
+                            dialog->apply();
+                        default: // make GCC happy
+                            break;
+                        }
+                    }
+                }
+            }
 
             QStringList selectedFiles = IFileListModel::path(currentSelection);
 
@@ -892,6 +821,7 @@ void MainWindow::syncCurrentIndex(const QModelIndex& currentIndex)
                     mPointed = data->position.isNull() ? path : "";
             }
 
+            mCurrentIndexBackup = { source, previousIndex };
             previousIndex = currentIndex;
 
             // qDebug() << __func__ << "from" << source->objectName() << path;
@@ -945,6 +875,14 @@ void MainWindow::applyCurrentIndex(QItemSelectionModel* to, const QString& path,
                 view->scrollTo(current);
         }
     }
+}
+
+void MainWindow::restoreSelection()
+{
+    qDebug() << __func__ << mSelectionBackup.first << IFileListModel::path(mSelectionBackup.second);
+
+    applySelection(mSelectionBackup.first, IFileListModel::path(mSelectionBackup.second));
+    applyCurrentIndex(mCurrentIndexBackup.first, IFileListModel::path(mCurrentIndexBackup.second));
 }
 
 QAbstractItemView *MainWindow::currentView() const
@@ -1154,8 +1092,11 @@ void MainWindow::on_actionPasteCoords_triggered()
     {
         if (auto dialog = coordEditDialog(CreateOption::Never))
         {
-            QString path = IFileListModel::path(currentView()->currentIndex());
-            dialog->setCoords(path, QPointF(coord.latitude(), coord.longitude()));
+            for (auto i : currentSelection())
+            {
+                QString path = IFileListModel::path(i);
+                dialog->setCoords(path, QPointF(coord.latitude(), coord.longitude()));
+            }
         }
     }
 }

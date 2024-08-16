@@ -34,6 +34,9 @@ public:
     enum class Button { Revert, Apply };
     QAbstractButton* button(Button button) const;
 
+protected:
+    void closeEvent(QCloseEvent* e) override;
+
 private:
     QTreeView* mView = nullptr;
     CoordEditModel* mModel = nullptr;

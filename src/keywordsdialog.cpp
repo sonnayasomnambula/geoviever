@@ -1,10 +1,15 @@
 #include <QBoxLayout>
+#include <QFileInfo>
+#include <QGuiApplication>
 #include <QHeaderView>
-#include <QTreeView>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QStyledItemDelegate>
+#include <QTreeView>
 
+#include "dialog.h"
+#include "exifstorage.h"
 #include "keywordsdialog.h"
 
 
@@ -186,59 +191,126 @@ void KeywordsDialog::setMode(Mode mode)
 
         mView->setColumnHidden(KeywordsModel::COLUMN_KEYWORD_COUNT, mMode == Mode::Edit);
 
-        if (mMode != Mode::Edit) // hide first
-        {
-            mInsert->hide();
-            mApply->hide();
-        }
+        std::initializer_list<Button> editButtons = { Button::Insert, Button::Apply };
+        std::initializer_list<Button> filterButtons = { Button::Or, Button::And };
 
-        mOr->setVisible(mMode == Mode::Filter);
-        mAnd->setVisible(mMode == Mode::Filter);
+        if (mMode != Mode::Edit) // hide first
+            for (Button b: editButtons)
+                button(b)->hide();
+
+        for (Button b: filterButtons)
+            button(b)->setVisible(mMode == Mode::Filter);
 
         if (mMode == Mode::Edit)
-        {
-            mInsert->show();
-            mApply->show();
-        }
+            for (Button b: editButtons)
+                button(b)->show();
     }
 }
 
 QAbstractButton* KeywordsDialog::button(Button button) const
 {
-    switch (button)
-    {
-    case Button::Insert:
-        return mInsert;
-    case Button::Apply:
-        return mApply;
-    case Button::Or:
-        return mOr;
-    case Button::And:
-        return mAnd;
+    return mButtons.value(button);
+}
+
+void KeywordsDialog::setFiles(const QStringList& files)
+{
+    if (mFiles == files)
+        return;
+
+    mFiles = files;
+
+    QSet<QString> all, common, partially;
+
+    for (const QString& path: mFiles) {
+        if (QFileInfo(path).isDir()) continue;
+        QString keywordsTag;
+        if (auto photo = ExifStorage::data(path))
+            keywordsTag = photo->keywords;
+        else
+            keywordsTag = Exif::File(path, false).value(EXIF_IFD_0, EXIF_TAG_XP_KEYWORDS).toString();
+
+        QSet<QString> keywords;
+
+        for (QString& s: keywordsTag.split(';'))
+            keywords.insert(s.trimmed());
+
+        if (all.isEmpty()) {
+            all = common = keywords;
+        } else {
+            all.unite(keywords);
+            common.intersect(keywords);
+            partially = all - common;
+        }
     }
 
-    return nullptr;
+    model()->setChecked(common, partially);
+    button(Button::Apply)->setEnabled(false);
+}
+
+void KeywordsDialog::apply()
+{
+    if (!Dialog::canOverwrite(mFiles.size(), this))
+        return;
+
+    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+    QStringList warnings;
+
+    for (const auto& path: mFiles) {
+        if (QFileInfo(path).isDir()) continue;
+        Exif::File file;
+        if (!file.load(path)) {
+            warnings.append(tr("Load '%1' failed: %2").arg(path, file.errorString()));
+            continue;
+        }
+
+        QString keywords = model()->values(Qt::Checked).join(';');
+        file.setValue(EXIF_IFD_0, EXIF_TAG_XP_KEYWORDS, keywords);
+
+        if (!file.save(path)) {
+            warnings.append(tr("Save '%1' failed: %2").arg(path, file.errorString()));
+            continue;
+        }
+
+        if (QSharedPointer<Photo> photo = ExifStorage::data(path))
+        {
+            photo->keywords = keywords;
+            emit ExifStorage::instance()->ready(photo);
+        }
+    }
+
+    QGuiApplication::restoreOverrideCursor();
+
+    if (warnings.isEmpty()) {
+        button(KeywordsDialog::Button::Apply)->setEnabled(false);
+        model()->setExtraFlags(Qt::NoItemFlags); // reset
+    } else {
+        QMessageBox::warning(this, "", warnings.join("\n"));
+    }
 }
 
 KeywordsDialog::KeywordsDialog(QWidget* parent)
     : QDialog(parent)
     , mView(new QTreeView(this))
     , mModel(new KeywordsModel(this))
-    , mInsert(new QPushButton(tr("Insert"), this))
-    , mApply(new QPushButton(tr("Apply"), this))
-    , mOr(new QRadioButton(tr("OR"), this))
-    , mAnd(new QRadioButton(tr("AND"), this))
 {
+    mButtons.insert(Button::Insert, new QPushButton(tr("Insert"), this));
+    mButtons.insert(Button::Apply, new QPushButton(tr("Apply"), this));
+    mButtons.insert(Button::Or, new QRadioButton(tr("OR"), this));
+    mButtons.insert(Button::And, new QRadioButton(tr("AND"), this));
+
     mView->setModel(mModel);
     mView->setIndentation(0);
     mView->setHeaderHidden(true);
     mView->header()->setResizeContentsPrecision(-1); // does not works...
     mView->header()->setSectionResizeMode(KeywordsModel::COLUMN_KEYWORD, QHeaderView::ResizeToContents); // does not works... (
     mView->header()->setSectionResizeMode(KeywordsModel::COLUMN_KEYWORD_COUNT, QHeaderView::Stretch);
+    mView->resizeColumnToContents(KeywordsModel::COLUMN_KEYWORD); // QHeaderView::ResizeMode doesn't seem to work
+    mView->resizeColumnToContents(KeywordsModel::COLUMN_KEYWORD_COUNT);
     mView->setItemDelegateForColumn(KeywordsModel::COLUMN_KEYWORD_COUNT, new CountDelegate(this));
 
-    mInsert->setShortcut(Qt::Key_Insert);
-    mApply->setShortcut(Qt::Key_F2);
+
+    button(Button::Insert)->setShortcut(Qt::Key_Insert);
+    button(Button::Apply)->setShortcut(Qt::Key_F2);
 
     setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
 
@@ -247,21 +319,21 @@ KeywordsDialog::KeywordsDialog(QWidget* parent)
                                                               const QVector<int>& roles){
         if (roles.contains(Qt::CheckStateRole)) {
             emit changed();
-            mApply->setEnabled(true); // TODO check ExifStorage::keywords() == model->keywords()
+            button(Button::Apply)->setEnabled(true); // TODO check ExifStorage::keywords() == model->keywords()
         }
 
         if (roles.contains(Qt::EditRole)) {
-            mApply->setEnabled(true);
+            button(Button::Apply)->setEnabled(true);
         }
     });
 
-    connect(mApply, &QPushButton::clicked, this, &KeywordsDialog::apply);
+    connect(button(Button::Apply), &QPushButton::clicked, this, &KeywordsDialog::apply);
 
-    connect(mInsert, &QPushButton::clicked, this, [this]{
+    connect(button(Button::Insert), &QPushButton::clicked, this, [this]{
         mView->edit(model()->insert("", 0, Qt::ItemIsEditable));
     });
 
-    connect(mAnd, &QRadioButton::toggled, this, &KeywordsDialog::changed);
+    connect(button(Button::And), &QRadioButton::toggled, this, &KeywordsDialog::changed);
 
     auto lay = new QVBoxLayout(this);
     auto blay = new QHBoxLayout;
@@ -272,11 +344,11 @@ KeywordsDialog::KeywordsDialog(QWidget* parent)
     lay->setContentsMargins({});
     lay->setSpacing(0);
 
-    blay->addWidget(mInsert);
+    blay->addWidget(button(Button::Insert));
     blay->addStretch();
-    blay->addWidget(mApply);
-    blay->addWidget(mOr);
-    blay->addWidget(mAnd);
+    blay->addWidget(button(Button::Apply));
+    blay->addWidget(button(Button::Or));
+    blay->addWidget(button(Button::And));
 
     lay->addWidget(mView);
     lay->addLayout(blay);
@@ -284,5 +356,5 @@ KeywordsDialog::KeywordsDialog(QWidget* parent)
     setWindowTitle(tr("Keywords"));
 
     setMode(Mode::Filter);
-    mOr->setChecked(true);
+    button(Button::Or)->setChecked(true);
 }

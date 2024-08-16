@@ -640,7 +640,7 @@ QModelIndex CoordEditModel::index(int row, int column, const QModelIndex& parent
 QModelIndex CoordEditModel::index(const QString& path) const
 {
     for (int row = 0; row < mData.size(); ++row)
-        if (mData[row].path == path)
+        if (mData[row]->path == path)
             return index(row, 0);
 
     return {};
@@ -657,44 +657,26 @@ QVariant CoordEditModel::data(const QModelIndex& index, int role) const
         index.row() < rowCount(index.parent()) &&
         index.column() < columnCount(index.parent()))
     {
-        const Data& d = mData.at(index.row());
-        if (role == Qt::DisplayRole || role == Qt::EditRole)
+        if (const QSharedPointer<Photo>& photo = mData.at(index.row()))
         {
-            if (index.column() == COLUMN_NAME)
-                return d.name;
-            if (index.column() == COLUMN_POSITION)
-                return d.position;
-        }
+            if (role == Qt::DisplayRole || role == Qt::EditRole)
+            {
+                if (index.column() == COLUMN_NAME)
+                    return QFileInfo(photo->path).fileName();
+                if (index.column() == COLUMN_POSITION)
+                    return photo->position;
+            }
 
-        if (role == IFileListModel::FilePathRole)
-        {
-            return d.path;
+            if (role == Qt::DecorationRole && index.column() == 0)
+                return photo->pix16;
+
+            if (role == IFileListModel::FilePathRole)
+                return photo->path;
         }
     }
 
     return {};
 
-}
-
-bool CoordEditModel::setData(const QModelIndex& index, const QVariant& value, int role)
-{
-    if (index.isValid() && index.row() < rowCount(index.parent()))
-    {
-        Data& d = mData[index.row()];
-
-        if (role == Qt::EditRole)
-        {
-            switch (index.column())
-            {
-            case COLUMN_POSITION:
-                d.position = value.toPointF();
-                emit dataChanged(index, index, { role });
-                return true;
-            }
-        }
-    }
-
-    return false;
 }
 
 bool CoordEditModel::insertRows(int row, int count, const QModelIndex& parent)
@@ -735,24 +717,24 @@ QVariant CoordEditModel::headerData(int section, Qt::Orientation orientation, in
     return {};
 }
 
-void CoordEditModel::backup(const QString& path, const QPointF& position)
+void CoordEditModel::backup(const QSharedPointer<Photo>& photo)
 {
-    if (!mBackup.contains(path))
-        mBackup[path] = position;
+    if (!mBackup.contains(photo->path))
+        mBackup[photo->path] = photo->position;
 }
 
-void CoordEditModel::update(const QString& path, const QPointF& position)
+void CoordEditModel::update(const QSharedPointer<Photo>& photo)
 {
-    QModelIndex i = index(path);
+    QModelIndex i = index(photo->path);
     if (i.isValid())
     {
-        setData(i.siblingAtColumn(COLUMN_POSITION), position);
+        emit dataChanged(i.siblingAtColumn(COLUMN_POSITION), i.siblingAtColumn(COLUMN_POSITION), { Qt::DisplayRole });
         return;
     }
 
     int row = rowCount();
     beginInsertRows({}, row, row);
-    mData.append({ path, QFileInfo(path).fileName(), position });
+    mData.append(photo);
     endInsertRows();
 }
 
@@ -774,7 +756,7 @@ QStringList CoordEditModel::updated() const
 {
     QStringList l;
     l.reserve(mData.size());
-    for (const Data& d: mData)
-        l.append(d.path);
+    for (const auto& p: mData)
+        l.append(p->path);
     return l;
 }

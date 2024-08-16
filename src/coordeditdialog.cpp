@@ -1,4 +1,5 @@
 #include <QBoxLayout>
+#include <QCloseEvent>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QTreeView>
@@ -52,11 +53,11 @@ void CoordEditDialog::setCoords(const QString& path, const QPointF& coord)
 {
     if (auto photo = ExifStorage::data(path))
     {
-        model()->backup(photo->path, photo->position);
+        model()->backup(photo);
         mRevert->setEnabled(true);
 
         photo->position = coord;
-        model()->update(photo->path, photo->position);
+        model()->update(photo);
         mApply->setEnabled(true);
 
         emit ExifStorage::instance()->ready(photo);
@@ -74,4 +75,21 @@ QAbstractButton* CoordEditDialog::button(Button button) const
     }
 
     return nullptr;
+}
+
+void CoordEditDialog::closeEvent(QCloseEvent* e)
+{
+    if (model()->rowCount())
+    {
+        int resp = QMessageBox::question(this, "", tr("Revert changes?"));
+        if (resp != QMessageBox::Yes)
+        {
+            e->ignore();
+            return;
+        }
+
+        emit revert();
+    }
+
+    e->accept();
 }
